@@ -56,6 +56,41 @@ youcadb config generate
 | `youcadb doctor` | Run environment diagnostics |
 | `youcadb config generate` | Generate default configuration |
 
+## Releases & PyPI Publishing
+
+Releases are published automatically when a git tag `v*.*.*` is pushed (or a GitHub
+Release is published), via the `.github/workflows/release.yml` workflow using
+[Trusted Publishing (OIDC)](https://docs.pypi.org/trusted-publishers/) — no PyPI API
+token is stored in GitHub secrets.
+
+### One-time setup before the first release
+
+1. Go to **PyPI → Account settings → Publishing → Add a new pending publisher** at
+   <https://pypi.org/manage/account/publishing/>.
+2. Fill in the form:
+   - **Project name**: `youcadb`
+   - **Publisher owner**: `<your-github-org-or-username>`
+   - **Repository name**: `youcadb`
+   - **Workflow name**: `release.yml`
+   - **Environment name**: `pypi` (must match `environment: pypi` in the workflow job)
+3. Click **Add publisher**. The `repository-url` and `skip-existing` fields used in the
+   workflow do not require changes.
+4. Repeat the same configuration on TestPyPI if you want the TestPyPI job to work:
+   - TestPyPI: `https://test.pypi.org/manage/account/publishing/`
+   - Project pending name: `youcadb` — use this job's environment accordingly.
+
+After that, pushing `git tag v0.1.0` (and a draft GitHub Release) will publish `youcadb`
+to TestPyPI and PyPI automatically.
+
+### Creating a release
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The workflow builds the wheel/sdist, verifies with `twine check`, publishes to TestPyPI
+then PyPI, and generates GitHub release notes from commits since the last tag.
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
