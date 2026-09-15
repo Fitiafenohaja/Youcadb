@@ -1,99 +1,167 @@
-# YoucaDB
+# Youcadb
 
-[![CI](https://github.com/youcadb/youcadb/actions/workflows/ci.yml/badge.svg)](https://github.com/youcadb/youcadb/actions/workflows/ci.yml)
+[![CI](https://github.com/Fitiafenohaja/Youcadb/actions/workflows/ci.yml/badge.svg)](https://github.com/Fitiafenohaja/Youcadb/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/youcadb)](https://pypi.org/project/youcadb/)
-[![Coverage](https://img.shields.io/codecov/c/github/youcadb/youcadb)](https://codecov.io/gh/youcadb/youcadb)
+[![Coverage](https://img.shields.io/codecov/c/github/Fitiafenohaja/Youcadb)](https://codecov.io/gh/Fitiafenohaja/Youcadb)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Database diagnostics and configuration CLI for developers.**
 
-YoucaDB helps developers quickly diagnose, configure, and manage local PostgreSQL and MySQL database instances. Detect your project's setup, create databases, verify connectivity, and troubleshoot common issues — all from a single CLI.
+Youcadb detects your project's language and framework, connects to PostgreSQL or MySQL, creates databases and users, and runs full environment diagnostics — all from a single, interactive CLI.
+
+---
+
+## Features
+
+- **Automatic project detection** — reads `pyproject.toml`, `package.json`, `docker-compose.yml`, `.env` and infers engine, host, port, and credentials.
+- **Interactive wizard** — guided prompts for `init` and `create` with sensible defaults and fallbacks for non-TTY environments.
+- **Idempotent engine operations** — creates databases and users only when they don't already exist; updates passwords safely.
+- **`youcadb doctor`** — checks driver presence, server connectivity, `0.0.0.0` bind exposure, git-tracked secrets, and more.
+- **`youcadb config`** — generate `.env` files from `.youcadb.toml`; inspect current settings.
+- **Secure by design** — flags passwords tracked in git and dangerous bind addresses; never writes credentials to stdout.
+
+---
+
+## Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| Python ≥ 3.10 | |
+| PostgreSQL **or** MySQL | Dockerised or local install |
+| `psycopg[binary]` | Required for PostgreSQL (`pip install youcadb[postgres]`) |
+| `pymysql` | Required for MySQL (`pip install youcadb[mysql]`) |
+
+---
 
 ## Installation
 
 ```bash
-pip install youcadb
+pip install youcadb           # core CLI (no drivers)
+pip install youcadb[postgres] # + psycopg (PostgreSQL)
+pip install youcadb[mysql]    # + pymysql (MySQL)
+pip install youcadb[all]      # both drivers
 ```
 
-With database driver extras:
+---
+
+## Quick start
 
 ```bash
-pip install youcadb[postgres]   # PostgreSQL support (psycopg)
-pip install youcadb[mysql]      # MySQL support (pymysql)
-pip install youcadb[all]        # Both drivers
-```
+# Initialise configuration in your project root
+youcadb init --no-interactive
 
-## Quick Start
+# Create a database interactively (prompts for name, user, password)
+youcadb create postgres
 
-```bash
-# Show welcome banner and available commands
-youcadb
+# Non-interactive: specify everything via flags
+youcadb create postgres \
+  --name my_app_db \
+  --user app_user \
+  --password s3cret \
+  --admin-password postgres
 
-# Initialise youcadb configuration in your project
-youcadb init
-
-# Create a PostgreSQL database
-youcadb create postgres --name my_app_db
-
-# Check the status of detected databases
+# Check project health
 youcadb status
 
-# Run diagnostics on your local environment
+# Run full environment diagnostics
 youcadb doctor
 
-# Generate a default configuration file
+# Generate .env from current .youcadb.toml
 youcadb config generate
+
+# Show effective configuration
+youcadb config show
 ```
+
+---
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `youcadb` | Display welcome banner |
-| `youcadb init` | Initialise `.youcadb.toml` in the current directory |
-| `youcadb create <engine>` | Create a database (`postgres` or `mysql`) |
-| `youcadb status` | Show status of detected databases |
-| `youcadb doctor` | Run environment diagnostics |
-| `youcadb config generate` | Generate default configuration |
+| `youcadb` | Show project status or initialisation hint |
+| `youcadb init [--no-interactive]` | Detect project and write `.youcadb.toml` |
+| `youcadb create <engine> [--name ...] [--user ...]` | Create database, user, and grant permissions |
+| `youcadb status` | Display connection health |
+| `youcadb doctor` | Full diagnostics (driver, server, config, security) |
+| `youcadb config generate [--force]` | Generate `.env` from `.youcadb.toml` |
+| `youcadb config show` | Print active configuration |
 
-## Releases & PyPI Publishing
+Run `youcadb <command> --help` for full options.
 
-Releases are published automatically when a git tag `v*.*.*` is pushed (or a GitHub
-Release is published), via the `.github/workflows/release.yml` workflow using
-[Trusted Publishing (OIDC)](https://docs.pypi.org/trusted-publishers/) — no PyPI API
-token is stored in GitHub secrets.
+---
 
-### One-time setup before the first release
+## Configuration
 
-1. Go to **PyPI → Account settings → Publishing → Add a new pending publisher** at
-   <https://pypi.org/manage/account/publishing/>.
-2. Fill in the form:
-   - **Project name**: `youcadb`
-   - **Publisher owner**: `<your-github-org-or-username>`
-   - **Repository name**: `youcadb`
-   - **Workflow name**: `release.yml`
-   - **Environment name**: `pypi` (must match `environment: pypi` in the workflow job)
-3. Click **Add publisher**. The `repository-url` and `skip-existing` fields used in the
-   workflow do not require changes.
-4. Repeat the same configuration on TestPyPI if you want the TestPyPI job to work:
-   - TestPyPI: `https://test.pypi.org/manage/account/publishing/`
-   - Project pending name: `youcadb` — use this job's environment accordingly.
+Yocabd stores its settings in `.youcadb.toml` at the project root:
 
-After that, pushing `git tag v0.1.0` (and a draft GitHub Release) will publish `youcadb`
-to TestPyPI and PyPI automatically.
+```toml
+[project]
+  name = "myproject"
 
-### Creating a release
-
-```bash
-git tag v0.2.0 && git push origin v0.2.0
+[database]
+  engine = "postgres"
+  host   = "localhost"
+  port   = 5432
+  name   = "myproject"
+  user   = "app_user"
+  password = "s3cret"   # only if stored in the file
 ```
 
-The workflow builds the wheel/sdist, verifies with `twine check`, publishes to TestPyPI
-then PyPI, and generates GitHub release notes from commits since the last tag.
+Generated `.env` files are added to `.gitignore` by default.
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/Fitiafenohaja/Youcadb.git
+cd Youcadb
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+### Quality gates
+
+```bash
+ruff check src tests       # lint
+ruff format --check src tests  # format
+mypy src/youcadb           # type check
+pytest tests/unit --cov=youcadb  # tests (≥80% coverage required)
+```
+
+### Running integration tests
+
+Set environment variables for a real database, then run:
+
+```bash
+export POSTGRES_HOST=localhost POSTGRES_PORT=5432 \
+       POSTGRES_USER=postgres  POSTGRES_PASSWORD=postgres
+pytest tests/integration/test_postgres.py -v
+```
+
+---
+
+## Releases
+
+Pushing a `v*.*.*` tag (or publishing a GitHub Release) triggers `.github/workflows/release.yml` and publishes to PyPI via [Trusted Publishing (OIDC)](https://docs.pypi.org/trusted-publishers/) — no API token is stored in secrets.
+
+**One-time setup (PyPI):**
+1. Go to [PyPI Publishing settings](https://pypi.org/manage/account/publishing/) → **Add pending publisher**.
+2. Fill: project `youcadb`, owner `Fitiafenohaja`, repo `Youcadb`, workflow `release.yml`, environment `pypi`.
+
+**Creating a release:**
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+---
 
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
 
 ## License
 

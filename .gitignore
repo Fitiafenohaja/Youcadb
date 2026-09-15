@@ -38,6 +38,16 @@ htmlcov/
 
 # OS files
 .DS_Store
+
+# Sensitive / internal documents (never publish to a repository)
+cahier-des-charges-youcadb.md
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+.pgpass
+.pg_service.conf
 Thumbs.db
 
 # youcadb runtime

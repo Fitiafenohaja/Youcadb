@@ -4,13 +4,73 @@ from __future__ import annotations
 
 import typer
 
+from youcadb import config as config_model
+from youcadb.detection.project import detect_project
+from youcadb.detection.system import detect_system
+from youcadb.engines import get_engine
+from youcadb.ui.menu import confirm, select_menu
+
 
 def init(
+    path: str = typer.Argument(".", help="Project directory to inspect."),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing configuration."),
+    engine: str = typer.Option(None, "--engine", "-e", help="Force a database engine."),
+    name: str = typer.Option(None, "--name", "-n", help="Project name."),
+    interactive: bool = typer.Option(
+        True, "--interactive/--no-interactive", help="Run in interactive mode."
+    ),
 ) -> None:
     """Initialise youcadb configuration in the current directory."""
-    # TODO: detect project context, write .youcadb.toml
-    typer.echo("Initializing youcadb project configuration...")
+    typer.echo("YoucaDB Project Detection")
+    typer.echo("=" * 40)
+
+    system = detect_system()
+    project = detect_project(path)
+
+    for detail in project.details:
+        typer.echo(f"  \u2713 {detail}")
+
+    if not project.details:
+        typer.echo("  No project files detected (pyproject.toml, package.json, etc.)")
+
+    if system.docker_available:
+        typer.echo("  \u2713 Docker detected")
+
+    engine_hint = engine or project.engine_hint
+    if engine_hint:
+        typer.echo("")
+        typer.echo(f"Recommended database: {engine_hint.capitalize()}")
+
+    if engine_hint is None and interactive:
+        engine_choice = select_menu(
+            "Which database engine do you want to use?",
+            ["postgres", "mysql"],
+        )
+        engine_hint = engine_choice or "postgres"
+    elif engine_hint is None:
+        engine_hint = "postgres"
+
+    project_name = name or (project.language.lower() if project.language else "myproject")
+
+    if (
+        not force
+        and config_model.load_config(path) is not None
+        and interactive
+        and not confirm(".youcadb.toml already exists. Overwrite?", default=True)
+    ):
+        raise typer.Exit(code=0)
+
+    engine_instance = get_engine(engine_hint)
+    cfg = config_model.YoucaDBConfig(
+        project_name=project_name,
+        database=config_model.DBConfig(
+            engine=engine_hint,
+            port=engine_instance.default_port,
+        ),
+    )
+
     if force:
         typer.echo("(forced mode — existing config will be overwritten)")
-    typer.echo("Done. Configuration written to .youcadb.toml")
+
+    config_model.save_config(cfg, path)
+    typer.echo(f"Done. Configuration written to {config_model.CONFIG_FILE}")

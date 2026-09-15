@@ -25,7 +25,11 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-dependencies = ["typer[all]>=0.12"]
+dependencies = [
+    "typer[all]>=0.12",
+    "questionary>=2.0",
+    'tomli>=2.0; python_version < "3.11"',
+]
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.1"]
@@ -42,14 +46,14 @@ dev = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["pymysql"]
+module = ["pymysql", "tomllib", "tomli"]
 ignore_missing_imports = true
 
 [project.urls]
-Homepage = "https://github.com/youcadb/youcadb"
-Repository = "https://github.com/youcadb/youcadb"
-Changelog = "https://github.com/youcadb/youcadb/blob/main/CHANGELOG.md"
-Issues = "https://github.com/youcadb/youcadb/issues"
+Homepage = "https://github.com/Fitiafenohaja/Youcadb"
+Repository = "https://github.com/Fitiafenohaja/Youcadb"
+Changelog = "https://github.com/Fitiafenohaja/Youcadb/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Fitiafenohaja/Youcadb/issues"
 
 [project.scripts]
 youcadb = "youcadb.cli:main"
