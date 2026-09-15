@@ -2,30 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import typer
 
 from youcadb import config as config_model
+from youcadb.detection.project import read_env_file
 from youcadb.detection.system import detect_system
 from youcadb.doctor import DiagnosticReport, run_diagnostics
 from youcadb.engines import get_engine
 from youcadb.ui.menu import select_menu
-
-
-def _read_env(project_dir: str = ".") -> dict[str, str]:
-    """Read a .env file into a dict (no external dependency)."""
-    env_vars: dict[str, str] = {}
-    env_path = Path(project_dir) / ".env"
-    if not env_path.exists():
-        return env_vars
-    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        env_vars[key.strip()] = value.strip().strip('"').strip("'")
-    return env_vars
 
 
 def _print_report(report: DiagnosticReport) -> None:
@@ -83,12 +67,7 @@ def doctor(
     user = cfg.database.user if cfg else ""
     password = cfg.database.password if cfg else ""
 
-    env_vars = _read_env(path)
-    database_url = env_vars.get("DATABASE_URL", "")
-    database_url_present = bool(database_url)
-    url_scheme: str | None = None
-    if database_url_present and "://" in database_url:
-        url_scheme = database_url.split("://", 1)[0]
+    env_vars = read_env_file(path)
 
     git_warnings = config_model.detect_env_password_in_git(path)
     bind_warnings = config_model.check_bind_address(path)
@@ -101,8 +80,7 @@ def doctor(
         port=port,
         user=user,
         password=password,
-        database_url_present=database_url_present,
-        url_scheme=url_scheme,
+        env=env_vars,
         exposed_on_0_0_0_0=bool(bind_warnings),
         password_tracked_in_git=bool(git_warnings),
     )

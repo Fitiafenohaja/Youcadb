@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from youcadb.cli import app
-from youcadb.commands.create import _prompt_engine
+from youcadb.commands.create import _prompt_engine, _try_start_docker
 
 runner = CliRunner()
 
@@ -140,10 +140,73 @@ def test_create_ensure_engine_unreachable_docker_offer() -> None:
         patch("youcadb.commands.create.get_engine", return_value=engine),
         patch("youcadb.commands.create.detect_system", return_value=system),
         patch("youcadb.commands.create.confirm", return_value=True),
+        patch("youcadb.commands.create._try_start_docker", return_value=False),
     ):
         result = runner.invoke(app, ["create", "postgres", "--no-interactive", "--name", "mydb"])
     assert result.exit_code == 1
-    assert "docker run" in result.stdout
+    assert "does not appear to be installed" in result.stderr
+
+
+def test_try_start_docker_success() -> None:
+    engine = _mock_engine()
+    with (
+        patch(
+            "youcadb.commands.create.detect_system", return_value=MagicMock(docker_running=True)
+        ),
+        patch(
+            "youcadb.commands.create.subprocess.run",
+            return_value=MagicMock(returncode=0),
+        ),
+        patch("youcadb.commands.create.time.sleep"),
+        patch("youcadb.commands.create.get_engine", return_value=engine),
+    ):
+        ok = _try_start_docker("postgres", "localhost", 5432, "postgres", "pw")
+    assert ok is True
+
+
+def test_try_start_docker_docker_fails() -> None:
+    with (
+        patch(
+            "youcadb.commands.create.detect_system", return_value=MagicMock(docker_running=True)
+        ),
+        patch(
+            "youcadb.commands.create.subprocess.run",
+            return_value=MagicMock(returncode=1),
+        ),
+    ):
+        ok = _try_start_docker("postgres", "localhost", 5432, "postgres", "pw")
+    assert ok is False
+
+
+def test_try_start_docker_server_never_ready() -> None:
+    engine = _mock_engine(connect_ok=False)
+    with (
+        patch(
+            "youcadb.commands.create.detect_system", return_value=MagicMock(docker_running=True)
+        ),
+        patch(
+            "youcadb.commands.create.subprocess.run",
+            return_value=MagicMock(returncode=0),
+        ),
+        patch("youcadb.commands.create.time.sleep"),
+        patch("youcadb.commands.create.get_engine", return_value=engine),
+    ):
+        ok = _try_start_docker("postgres", "localhost", 5432, "postgres", "pw")
+    assert ok is False
+
+
+def test_try_start_docker_subprocess_raises() -> None:
+    with (
+        patch(
+            "youcadb.commands.create.detect_system", return_value=MagicMock(docker_running=True)
+        ),
+        patch(
+            "youcadb.commands.create.subprocess.run",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        ok = _try_start_docker("postgres", "localhost", 5432, "postgres", "pw")
+    assert ok is False
 
 
 def test_create_interactive_success(tmp_path, monkeypatch) -> None:

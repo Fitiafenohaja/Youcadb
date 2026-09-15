@@ -107,7 +107,13 @@ def _main_callback(
 
 def _has_project_files() -> bool:
     """Return True if the directory looks like a project."""
-    markers = ("pyproject.toml", "package.json", "requirements.txt", "docker-compose.yml")
+    markers = (
+        "pyproject.toml",
+        "package.json",
+        "requirements.txt",
+        "docker-compose.yml",
+        "Dockerfile",
+    )
     return any(Path(m).exists() for m in markers)
 
 

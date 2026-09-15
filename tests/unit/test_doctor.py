@@ -10,6 +10,7 @@ from youcadb.doctor import (
     DiagnosticReport,
     check_config_vars,
     check_engine_driver,
+    check_mysql_auth_plugin,
     check_security,
     check_service_running,
     run_diagnostics,
@@ -64,20 +65,56 @@ def test_check_engine_driver_missing() -> None:
 
 
 def test_check_config_vars_present() -> None:
-    result = check_config_vars(True, "mysql", "mysql")
-    assert result.ok is True
+    checks = check_config_vars("mysql", {"DATABASE_URL": "mysql://u:p@localhost:3306/db"})
+    assert checks
+    assert all(c.ok for c in checks)
 
 
 def test_check_config_vars_scheme_mismatch() -> None:
-    result = check_config_vars(True, "postgres", "mysql")
-    assert result.ok is False
-    assert result.kind == "error"
+    checks = check_config_vars("postgres", {"DATABASE_URL": "mysql://u:p@localhost:3306/db"})
+    assert any(not c.ok and c.kind == "error" for c in checks)
 
 
 def test_check_config_vars_missing() -> None:
-    result = check_config_vars(False, "postgres", None)
-    assert result.ok is False
-    assert result.kind == "warning"
+    checks = check_config_vars("postgres", {})
+    assert any(not c.ok and c.kind == "warning" and "DATABASE_URL" in c.name for c in checks)
+    assert any(not c.ok and c.name == "DB_PORT" for c in checks)
+
+
+def test_check_config_vars_contradiction() -> None:
+    checks = check_config_vars(
+        "postgres",
+        {
+            "DATABASE_URL": "postgresql://bob:pw@dbhost:5432/prod",
+            "DB_HOST": "otherhost",
+            "DB_PORT": "3306",
+        },
+    )
+    assert any(not c.ok and c.kind == "error" and "DB_HOST" in c.name for c in checks)
+    assert any(not c.ok and c.kind == "error" and "DB_PORT" in c.name for c in checks)
+
+
+def test_check_mysql_auth_plugin_skipped_for_postgres() -> None:
+    assert check_mysql_auth_plugin("postgres", "postgres", "localhost", 5432, "") == []
+
+
+def test_check_mysql_auth_plugin_missing_driver() -> None:
+    with patch.dict("sys.modules", {"pymysql": None}):
+        assert check_mysql_auth_plugin("mysql", "root", "localhost", 3306, "") == []
+
+
+def test_check_mysql_auth_plugin_warns_sha2() -> None:
+    fake_pymysql = MagicMock()
+    conn = MagicMock()
+    cur = conn.cursor.return_value
+    cur.__enter__.return_value = cur
+    cur.fetchone.return_value = ("caching_sha2_password",)
+    fake_pymysql.connect.return_value = conn
+    with patch.dict("sys.modules", {"pymysql": fake_pymysql}):
+        checks = check_mysql_auth_plugin("mysql", "root", "localhost", 3306, "pw")
+    assert len(checks) == 1
+    assert checks[0].kind == "warning"
+    assert "caching_sha2_password" in checks[0].message
 
 
 def test_check_security_clean() -> None:
@@ -142,8 +179,7 @@ def test_run_diagnostics_passes_engine_name() -> None:
             port=5432,
             user="postgres",
             password="",
-            database_url_present=True,
-            url_scheme="postgresql",
+            env={"DATABASE_URL": "postgresql://postgres@localhost:5432/testdb"},
             exposed_on_0_0_0_0=False,
             password_tracked_in_git=False,
         )

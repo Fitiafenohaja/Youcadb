@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from youcadb.detection.system import SystemInfo
@@ -222,33 +223,178 @@ def check_database(
     )
 
 
-def check_config_vars(
-    database_url_present: bool, engine_name: str, url_scheme: str | None
-) -> CheckResult:
-    """Check env variables coherence."""
+def _parse_database_url(url: str, expected_scheme: str) -> tuple[str, int, str, str] | None:
+    """Parse a DATABASE_URL into (host, port, dbname, user)."""
+    try:
+        parsed = urlparse(url)
+        port = parsed.port or (5432 if expected_scheme == "postgresql" else 3306)
+        return (
+            parsed.hostname or "",
+            port,
+            parsed.path.lstrip("/"),
+            parsed.username or "",
+        )
+    except ValueError:
+        return None
+
+
+def check_config_vars(engine_name: str, env: dict[str, str]) -> list[CheckResult]:
+    """Check env variables presence and coherence with the engine."""
     expected_scheme = "postgresql" if engine_name == "postgres" else "mysql"
-    if not database_url_present:
-        return CheckResult(
-            name="DATABASE_URL",
-            ok=False,
-            message="DATABASE_URL not detected in .env",
-            kind="warning",
-            fix="Run 'youcadb config generate' to create a .env file.",
+    checks: list[CheckResult] = []
+
+    url = env.get("DATABASE_URL", "").strip()
+    if not url:
+        checks.append(
+            CheckResult(
+                name="DATABASE_URL",
+                ok=False,
+                message="DATABASE_URL not detected in .env",
+                kind="warning",
+                fix="Run 'youcadb config generate' to create a .env file.",
+            )
         )
-    if url_scheme is not None and url_scheme != expected_scheme:
-        return CheckResult(
-            name="DATABASE_URL",
-            ok=False,
-            message=f"DATABASE_URL uses '{url_scheme}://' but engine is {engine_name}",
-            kind="error",
-            fix=f"Expected '{expected_scheme}://' scheme.",
+        for var in ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER"):
+            if not env.get(var):
+                checks.append(
+                    CheckResult(
+                        name=var,
+                        ok=False,
+                        message=f"{var} missing from .env",
+                        kind="warning",
+                        fix="Add it or run 'youcadb config generate'.",
+                    )
+                )
+        return checks
+
+    if "://" not in url:
+        checks.append(
+            CheckResult(
+                name="DATABASE_URL",
+                ok=False,
+                message="DATABASE_URL format is invalid (missing '://')",
+                kind="warning",
+                fix="Use the form 'scheme://user:pass@host:port/dbname'.",
+            )
         )
-    return CheckResult(
-        name="DATABASE_URL",
-        ok=True,
-        message="DATABASE_URL detected and coherent",
-        kind="info",
-    )
+        return checks
+
+    scheme = url.split("://", 1)[0].lower()
+    if scheme != expected_scheme:
+        checks.append(
+            CheckResult(
+                name="DATABASE_URL",
+                ok=False,
+                message=f"DATABASE_URL uses '{scheme}://' but engine is {engine_name}",
+                kind="error",
+                fix=f"Expected '{expected_scheme}://' scheme.",
+            )
+        )
+    else:
+        checks.append(
+            CheckResult(
+                name="DATABASE_URL",
+                ok=True,
+                message="DATABASE_URL detected and coherent",
+                kind="info",
+            )
+        )
+
+    parsed = _parse_database_url(url, expected_scheme)
+    if parsed:
+        host, port, dbname, user = parsed
+        for var, value, expected in (
+            ("DB_HOST", env.get("DB_HOST"), host),
+            ("DB_NAME", env.get("DB_NAME"), dbname),
+            ("DB_USER", env.get("DB_USER"), user),
+        ):
+            if value and value.strip() != expected:
+                checks.append(
+                    CheckResult(
+                        name=var,
+                        ok=False,
+                        message=f"{var}='{value}' contradicts DATABASE_URL ('{expected}')",
+                        kind="error",
+                        fix="Align .env values with DATABASE_URL.",
+                    )
+                )
+        raw_port = env.get("DB_PORT")
+        if raw_port:
+            try:
+                if int(raw_port) != port:
+                    checks.append(
+                        CheckResult(
+                            name="DB_PORT",
+                            ok=False,
+                            message=f"DB_PORT={raw_port} differs from DATABASE_URL port {port}",
+                            kind="error",
+                            fix="Align .env values with DATABASE_URL.",
+                        )
+                    )
+            except ValueError:
+                checks.append(
+                    CheckResult(
+                        name="DB_PORT",
+                        ok=False,
+                        message=f"DB_PORT='{raw_port}' is not a valid number",
+                        kind="warning",
+                        fix="Set DB_PORT to an integer.",
+                    )
+                )
+
+    return checks
+
+
+def check_mysql_auth_plugin(
+    engine_name: str, user: str, host: str, port: int, password: str
+) -> list[CheckResult]:
+    """Warn when the configured MySQL user relies on a modern auth plugin."""
+    if engine_name != "mysql" or not user:
+        return []
+
+    checks: list[CheckResult] = []
+    try:
+        import pymysql
+
+        conn = pymysql.connect(
+            host=host, port=port or 3306, user=user, password=password, connect_timeout=5
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT plugin FROM mysql.user WHERE user = %s LIMIT 1", (user,))
+                row = cur.fetchone()
+                plugin: str | None = row[0] if row else None
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+    if plugin == "caching_sha2_password":
+        checks.append(
+            CheckResult(
+                name="MySQL auth plugin",
+                ok=False,
+                message=(
+                    f"User '{user}' uses caching_sha2_password; some older clients/drivers "
+                    "cannot authenticate with it"
+                ),
+                kind="warning",
+                fix=(
+                    f"Switch the plugin or ensure the driver supports caching_sha2_password: "
+                    f"ALTER USER '{user}' IDENTIFIED WITH mysql_native_password BY '<password>';"
+                ),
+            )
+        )
+    else:
+        checks.append(
+            CheckResult(
+                name="MySQL auth plugin",
+                ok=True,
+                message=f"User '{user}' uses a compatible auth plugin ({plugin or 'n/a'})",
+                kind="info",
+            )
+        )
+    return checks
 
 
 def check_security(exposed_on_0_0_0_0: bool, password_tracked_in_git: bool) -> list[CheckResult]:
@@ -303,8 +449,7 @@ def run_diagnostics(
     port: int,
     user: str,
     password: str,
-    database_url_present: bool,
-    url_scheme: str | None,
+    env: dict[str, str],
     exposed_on_0_0_0_0: bool,
     password_tracked_in_git: bool,
 ) -> DiagnosticReport:
@@ -315,7 +460,11 @@ def run_diagnostics(
     report.add(check_system_engine(engine_name, system))
     report.add(check_service_running(engine_name, system, user=user, password=password))
     report.add(check_database(engine_name, database, host, port, user, password))
-    report.add(check_config_vars(database_url_present, engine_name, url_scheme))
+    for check in check_config_vars(engine_name, env):
+        report.add(check)
+    if engine_name == "mysql":
+        for check in check_mysql_auth_plugin(engine_name, user, host, port, password):
+            report.add(check)
     for check in check_security(exposed_on_0_0_0_0, password_tracked_in_git):
         report.add(check)
 

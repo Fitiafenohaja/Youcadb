@@ -46,6 +46,44 @@ NODE_DRIVERS: dict[str, str] = {
     "mikro-orm": "MikroORM",
 }
 
+PHP_PG_DRIVERS: set[str] = {"ext-pdo_pgsql", "ext-pgsql", "ext-pg"}
+PHP_MYSQL_DRIVERS: set[str] = {"ext-pdo_mysql", "ext-mysqli", "ext-mysql"}
+PHP_FRAMEWORKS: dict[str, str] = {
+    "laravel/framework": "Laravel",
+    "laravel/laravel": "Laravel",
+    "symfony/symfony": "Symfony",
+    "symfony/framework-bundle": "Symfony",
+    "cakephp/cakephp": "CakePHP",
+    "codeigniter4/framework": "CodeIgniter",
+}
+
+RUBY_PG_DRIVERS: set[str] = {"pg"}
+RUBY_MYSQL_DRIVERS: set[str] = {"mysql2"}
+RUBY_FRAMEWORKS: dict[str, str] = {
+    "rails": "Ruby on Rails",
+    "sinatra": "Sinatra",
+}
+_NODE_PG_DRIVERS = ("pg", "psql", "postgres")
+_NODE_MYSQL_DRIVERS = ("mysql2", "mysql")
+
+
+def _sort_engine_hint(
+    pg_drivers: set[str], mysql_drivers: set[str], details: list[str], label: str
+) -> tuple[str | None, str | None]:
+    """Set engine_hint/driver notes from detected driver sets (or None if ambiguous)."""
+    if pg_drivers and mysql_drivers:
+        details.append(f"Multiple database drivers detected - choose an engine manually ({label})")
+        return None, None
+    if pg_drivers:
+        driver = sorted(pg_drivers)[0].replace("_", "-")
+        details.append(f"PostgreSQL driver detected ({driver})")
+        return "postgres", driver
+    if mysql_drivers:
+        driver = sorted(mysql_drivers)[0].replace("_", "-")
+        details.append(f"MySQL driver detected ({driver})")
+        return "mysql", driver
+    return None, None
+
 
 @dataclass(frozen=True)
 class ProjectInfo:
@@ -56,9 +94,26 @@ class ProjectInfo:
     database_driver: str | None = None
     engine_hint: str | None = None  # "postgres" or "mysql"
     docker_compose: bool = False
+    dockerfile: bool = False
     env_file: bool = False
     env_example: bool = False
+    env: dict[str, str] = field(default_factory=dict)
     details: list[str] = field(default_factory=list)
+
+
+def read_env_file(project_dir: str = ".", filename: str = ".env") -> dict[str, str]:
+    """Parse a dotenv-style file into a dict of key/value pairs."""
+    path = Path(project_dir) / filename
+    if not path.exists():
+        return {}
+    env_vars: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        env_vars[key.strip()] = value.strip().strip('"').strip("'")
+    return env_vars
 
 
 def _read_pyproject(path: Path) -> dict[str, Any] | None:
@@ -97,11 +152,10 @@ def _read_requirements(path: Path) -> set[str]:
 
 def _detect_python_project(
     project_dir: Path,
-) -> tuple[str | None, str | None, str | None, list[str]]:
+) -> tuple[str | None, str | None, str | None, str | None, list[str]]:
     """Detect language/framework/driver from Python project files."""
     language = "Python"
     framework: str | None = None
-    driver: str | None = None
     details: list[str] = [f"{language} detected"]
 
     all_deps: set[str] = set()
@@ -123,15 +177,12 @@ def _detect_python_project(
         if req_path.exists():
             all_deps |= _read_requirements(req_path)
 
-    for dep in all_deps:
-        if dep in PG_DRIVERS:
-            driver = dep.replace("_", "-")
-            details.append(f"PostgreSQL driver detected ({driver})")
-            break
-        if dep in MYSQL_DRIVERS:
-            driver = dep.replace("_", "-")
-            details.append(f"MySQL driver detected ({driver})")
-            break
+    pg_drivers = all_deps & PG_DRIVERS
+    mysql_drivers = all_deps & MYSQL_DRIVERS
+    engine_hint, driver_default = _sort_engine_hint(pg_drivers, mysql_drivers, details, "Python")
+    driver = driver_default
+    if driver_default is None and (pg_drivers or mysql_drivers):
+        driver = sorted(pg_drivers | mysql_drivers)[0].replace("_", "-")
 
     fw_map = {**PG_FRAMEWORKS, **MYSQL_FRAMEWORKS}
     for dep in all_deps:
@@ -140,7 +191,7 @@ def _detect_python_project(
             details.append(f"{framework} detected")
             break
 
-    return language, framework, driver, details
+    return language, framework, driver, engine_hint, details
 
 
 def _detect_node_project(
@@ -163,16 +214,13 @@ def _detect_node_project(
         for dep_name in deps_dict:
             all_deps.add(dep_name.lower())
 
-    for dep in all_deps:
-        if dep in NODE_DRIVERS:
-            driver = NODE_DRIVERS[dep]
-            if dep in ("pg", "psql", "postgres"):
-                engine_hint = "postgres"
-                details.append(f"PostgreSQL driver detected ({driver})")
-            elif dep in ("mysql2", "mysql"):
-                engine_hint = "mysql"
-                details.append(f"MySQL driver detected ({driver})")
-            break
+    detected = sorted(all_deps & set(NODE_DRIVERS))
+    pg_drivers = set(d for d in detected if d in _NODE_PG_DRIVERS)
+    mysql_drivers = set(d for d in detected if d in _NODE_MYSQL_DRIVERS)
+    engine_hint, driver_default = _sort_engine_hint(pg_drivers, mysql_drivers, details, "Node.js")
+    driver = driver_default
+    if driver_default is None and detected:
+        driver = NODE_DRIVERS[detected[0]]
 
     if "express" in all_deps or "fastify" in all_deps:
         framework = "Express" if "express" in all_deps else "Fastify"
@@ -183,6 +231,85 @@ def _detect_node_project(
     elif "nestjs" in all_deps or "@nestjs/core" in all_deps:
         framework = "NestJS"
         details.append(f"{framework} detected")
+
+    return language, framework, driver, engine_hint, details
+
+
+def _read_composer(project_dir: Path) -> dict[str, Any] | None:
+    """Read a composer.json file."""
+    import json
+
+    try:
+        return dict(json.loads((project_dir / "composer.json").read_text(encoding="utf-8")))
+    except Exception:
+        return None
+
+
+def _detect_php_project(
+    project_dir: Path,
+) -> tuple[str | None, str | None, str | None, str | None, list[str]]:
+    """Detect language/framework/driver from PHP (composer.json) files."""
+    language = "PHP"
+    framework: str | None = None
+    details: list[str] = [f"{language} detected"]
+
+    composer = _read_composer(project_dir)
+    if composer is None:
+        return language, framework, None, None, details
+
+    require = composer.get("require", {})
+    dep_names = {str(name).lower() for name in require}
+
+    pg_drivers = dep_names & PHP_PG_DRIVERS
+    mysql_drivers = dep_names & PHP_MYSQL_DRIVERS
+    engine_hint, driver = _sort_engine_hint(pg_drivers, mysql_drivers, details, "PHP")
+
+    for dep in dep_names:
+        if dep in PHP_FRAMEWORKS:
+            framework = PHP_FRAMEWORKS[dep]
+            details.append(f"{framework} detected")
+            break
+
+    return language, framework, driver, engine_hint, details
+
+
+def _read_gemfile(project_dir: Path) -> set[str]:
+    """Parse a Gemfile and return gem names."""
+    gemfile = project_dir / "Gemfile"
+    if not gemfile.exists():
+        return set()
+    gems: set[str] = set()
+    try:
+        for line in gemfile.read_text(encoding="utf-8", errors="ignore").splitlines():
+            match = re.search(r'gem\s+["\']([\w.-]+)["\']', line)
+            if match:
+                gems.add(match.group(1).lower())
+    except Exception:
+        pass
+    return gems
+
+
+def _detect_ruby_project(
+    project_dir: Path,
+) -> tuple[str | None, str | None, str | None, str | None, list[str]]:
+    """Detect language/framework/driver from Ruby (Gemfile) files."""
+    language = "Ruby"
+    framework: str | None = None
+    details: list[str] = [f"{language} detected"]
+
+    gems = _read_gemfile(project_dir)
+    if not gems:
+        return language, framework, None, None, details
+
+    pg_drivers = {g for g in gems if g in RUBY_PG_DRIVERS}
+    mysql_drivers = {g for g in gems if g in RUBY_MYSQL_DRIVERS}
+    engine_hint, driver = _sort_engine_hint(pg_drivers, mysql_drivers, details, "Ruby")
+
+    for gem in gems:
+        if gem in RUBY_FRAMEWORKS:
+            framework = RUBY_FRAMEWORKS[gem]
+            details.append(f"{framework} detected")
+            break
 
     return language, framework, driver, engine_hint, details
 
@@ -198,33 +325,54 @@ def detect_project(path: str = ".") -> ProjectInfo:
     docker_compose = (project_dir / "docker-compose.yml").exists() or (
         project_dir / "docker-compose.yaml"
     ).exists()
+    dockerfile = (project_dir / "Dockerfile").exists() or (project_dir / "dockerfile").exists()
     env_file = (project_dir / ".env").exists()
     env_example = (project_dir / ".env.example").exists()
 
     if docker_compose:
         details.append("docker-compose.yml detected")
+    if dockerfile:
+        details.append("Dockerfile detected")
     if env_file:
         details.append(".env file detected")
     if env_example:
         details.append(".env.example detected")
 
+    env_vars = read_env_file(path)
+    if not env_vars and env_example:
+        env_vars = read_env_file(path, filename=".env.example")
+    if "DATABASE_URL" in env_vars:
+        details.append("DATABASE_URL detected")
+
     has_pyproject = (project_dir / "pyproject.toml").exists()
     has_requirements = (project_dir / "requirements.txt").exists()
     has_package_json = (project_dir / "package.json").exists()
+    has_composer = (project_dir / "composer.json").exists()
+    has_gemfile = (project_dir / "Gemfile").exists()
 
     if has_pyproject or has_requirements:
-        language, framework, driver, py_details = _detect_python_project(project_dir)
+        language, framework, driver, engine_hint, py_details = _detect_python_project(project_dir)
         details.extend(py_details)
-        if driver:
-            engine_hint = (
-                "postgres"
-                if "psycopg" in (driver or "").lower() or "asyncpg" in (driver or "").lower()
-                else "mysql"
-            )
 
     elif has_package_json:
         language, framework, driver, engine_hint, node_details = _detect_node_project(project_dir)
         details.extend(node_details)
+
+    elif has_composer or (project_dir / "composer.lock").exists():
+        language, framework, driver, engine_hint, php_details = _detect_php_project(project_dir)
+        details.extend(php_details)
+
+    elif has_gemfile:
+        language, framework, driver, engine_hint, ruby_details = _detect_ruby_project(project_dir)
+        details.extend(ruby_details)
+
+    # Fall back to the engine implied by DATABASE_URL when no driver hints it.
+    if engine_hint is None:
+        url = env_vars.get("DATABASE_URL", "")
+        if url.startswith("mysql://"):
+            engine_hint = "mysql"
+        elif url.startswith("postgres"):
+            engine_hint = "postgres"
 
     return ProjectInfo(
         language=language,
@@ -232,7 +380,9 @@ def detect_project(path: str = ".") -> ProjectInfo:
         database_driver=driver,
         engine_hint=engine_hint,
         docker_compose=docker_compose,
+        dockerfile=dockerfile,
         env_file=env_file,
         env_example=env_example,
+        env=env_vars,
         details=details,
     )

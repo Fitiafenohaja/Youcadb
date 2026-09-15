@@ -83,3 +83,89 @@ def test_detect_requirements_txt(tmp_path) -> None:
     result = detect_project(str(tmp_path))
     assert result.language == "Python"
     assert result.engine_hint == "postgres"
+
+
+def test_detect_python_multiple_drivers_ambiguous(tmp_path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "t"\ndependencies = ["psycopg[binary]", "pymysql"]\n'
+    )
+    result = detect_project(str(tmp_path))
+    assert result.engine_hint is None
+    assert any("Multiple database drivers" in d for d in result.details)
+
+
+def test_detect_node_multiple_drivers_ambiguous(tmp_path) -> None:
+    import json
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"pg": "^8", "mysql2": "^3"}})
+    )
+    result = detect_project(str(tmp_path))
+    assert result.engine_hint is None
+
+
+def test_detect_dockerfile(tmp_path) -> None:
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12\n")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "t"\ndependencies = []\n')
+    result = detect_project(str(tmp_path))
+    assert result.dockerfile is True
+    assert any("Dockerfile detected" in d for d in result.details)
+
+
+def test_detect_env_values_and_engine_from_url(tmp_path) -> None:
+    (tmp_path / ".env").write_text(
+        "DATABASE_URL=postgresql://alice:pw@dbhost:5433/appdb\nDB_HOST=dbhost\nDB_USER=alice\n"
+    )
+    result = detect_project(str(tmp_path))
+    assert result.engine_hint == "postgres"
+    assert result.env["DB_USER"] == "alice"
+    assert result.env["DATABASE_URL"].startswith("postgresql://")
+    assert any("DATABASE_URL detected" in d for d in result.details)
+
+
+def test_detect_mysql_url_takes_precedence(tmp_path) -> None:
+    (tmp_path / ".env.example").write_text("DATABASE_URL=mysql://root:pw@localhost:3306/app\n")
+    result = detect_project(str(tmp_path))
+    assert result.engine_hint == "mysql"
+
+
+def test_detect_php_laravel_mysql(tmp_path) -> None:
+    import json
+
+    (tmp_path / "composer.json").write_text(
+        json.dumps({"require": {"laravel/framework": "^10", "ext-pdo_mysql": "*"}})
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "PHP"
+    assert "Laravel" in (result.framework or "")
+    assert result.engine_hint == "mysql"
+
+
+def test_detect_php_pgsql(tmp_path) -> None:
+    import json
+
+    (tmp_path / "composer.json").write_text(
+        json.dumps({"require": {"ext-pdo_pgsql": "*", "symfony/symfony": "^6"}})
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "PHP"
+    assert result.engine_hint == "postgres"
+
+
+def test_detect_ruby_rails_pg(tmp_path) -> None:
+    (tmp_path / "Gemfile").write_text(
+        'source "https://rubygems.org"\ngem "rails", "~> 7.0"\ngem "pg"\n'
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Ruby"
+    assert "Ruby on Rails" in (result.framework or "")
+    assert result.engine_hint == "postgres"
+
+
+def test_detect_ruby_mysql2(tmp_path) -> None:
+    (tmp_path / "Gemfile").write_text(
+        'source "https://rubygems.org"\ngem "mysql2"\ngem "sinatra"\n'
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Ruby"
+    assert result.engine_hint == "mysql"

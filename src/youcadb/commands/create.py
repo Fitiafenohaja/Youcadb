@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import shlex
+import subprocess
+import time
+
 import typer
 
 from youcadb import config as config_model
@@ -18,6 +22,33 @@ def _prompt_engine() -> str:
 
     choice = select_menu("Database engine?", ["postgres", "mysql"])
     return choice or "postgres"
+
+
+def _try_start_docker(engine_name: str, host: str, port: int, user: str, password: str) -> bool:
+    """Start a dedicated container and wait for the engine to accept connections."""
+    guide = install_guide(engine_name, detect_system())
+    typer.echo(f"  Starting: {guide.docker_command}", err=True)
+    try:
+        proc = subprocess.run(shlex.split(guide.docker_command), capture_output=True, timeout=30)
+        started = proc.returncode == 0
+    except Exception as exc:
+        typer.echo(f"  Could not start the Docker container: {exc}", err=True)
+        return False
+
+    if not started:
+        typer.echo("  The Docker container could not be started.", err=True)
+        return False
+
+    engine = get_engine(engine_name)
+    typer.echo("  Waiting for the container to accept connections...", err=True)
+    for _ in range(10):
+        result = engine.connect(host=host, port=port, user=user, password=password)
+        if result.success:
+            typer.echo("  \u2713 Container is responding.", err=True)
+            return True
+        time.sleep(2)
+    typer.echo("  Container started but the engine did not become reachable.", err=True)
+    return False
 
 
 def _ensure_engine_ready(engine_name: str, host: str, port: int, user: str, password: str) -> bool:
@@ -57,8 +88,11 @@ def _ensure_engine_ready(engine_name: str, host: str, port: int, user: str, pass
 
     if system.docker_running:
         typer.echo("", err=True)
-        if confirm("Start a Docker container for this engine?"):
-            typer.echo(f"  Run: {guide.docker_command}")
+        if confirm("Start a Docker container for this engine?") and _try_start_docker(
+            engine_name, host, port, user, password
+        ):
+            typer.echo(f"  \u2713 {engine.name} container started.", err=True)
+            return True
 
     return False
 

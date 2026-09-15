@@ -40,6 +40,9 @@ def init(
     if engine_hint:
         typer.echo("")
         typer.echo(f"Recommended database: {engine_hint.capitalize()}")
+    else:
+        typer.echo("")
+        typer.echo("Recommended database: not determined (no driver or conflicting drivers)")
 
     if engine_hint is None and interactive:
         engine_choice = select_menu(
@@ -48,6 +51,7 @@ def init(
         )
         engine_hint = engine_choice or "postgres"
     elif engine_hint is None:
+        typer.echo("  (defaulting to PostgreSQL in non-interactive mode)")
         engine_hint = "postgres"
 
     project_name = name or (project.language.lower() if project.language else "myproject")
@@ -61,13 +65,26 @@ def init(
         raise typer.Exit(code=0)
 
     engine_instance = get_engine(engine_hint)
+
+    env = project.env
+    host = env.get("DB_HOST") or env.get("POSTGRES_HOST") or env.get("MYSQL_HOST") or "localhost"
+    port_value = env.get("DB_PORT") or env.get("POSTGRES_PORT") or env.get("MYSQL_PORT")
+    port = int(port_value) if port_value and port_value.isdigit() else engine_instance.default_port
+
     cfg = config_model.YoucaDBConfig(
         project_name=project_name,
         database=config_model.DBConfig(
             engine=engine_hint,
-            port=engine_instance.default_port,
+            host=host,
+            port=port,
+            name=env.get("DB_NAME", ""),
+            user=env.get("DB_USER", ""),
+            password=env.get("DB_PASSWORD", ""),
         ),
     )
+
+    if env:
+        typer.echo("(existing environment variables detected - values pre-filled)")
 
     if force:
         typer.echo("(forced mode — existing config will be overwritten)")
