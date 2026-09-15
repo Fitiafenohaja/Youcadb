@@ -21,7 +21,7 @@ app = typer.Typer(
 
 
 @app.callback(invoke_without_command=True)
-def main(
+def _main_callback(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", help="Show version and exit."),
 ) -> None:
@@ -41,13 +41,10 @@ app.command()(doctor_cmd.doctor)
 app.command(name="config")(config_cmd.config)
 
 
-def run() -> None:
+def main() -> None:
     """Console-script entry point."""
     app()
 
 
-main = run  # alias so the console script and tests stay tidy
-
-
 if __name__ == "__main__":
-    run()
+    main()
