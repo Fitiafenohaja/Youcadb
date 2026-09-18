@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unit tests on macOS and Windows (Python 3.14); `.python-version` pins the dev version.
 - **README rewritten in French** with the detection matrix, security guarantees,
   Python-version policy and cross-platform support.
+- **PyPI-specific long description** (`description.md`): the package page now shows a
+  user-facing French description instead of the full developer README.
 - **Full engine implementations** for PostgreSQL (`psycopg`) and MySQL (`pymysql`):
   connect with server-version reporting, idempotent database/user creation with
   privilege grants, drop with active-connection termination, and connection tests.
