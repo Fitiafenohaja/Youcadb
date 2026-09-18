@@ -13,6 +13,37 @@ de l'environnement — le tout depuis une unique interface en ligne de commande.
 
 ---
 
+## Pourquoi Youcadb ?
+
+Mettre en place une base de données en développement est une tâche répétitive et
+source d'erreurs : créer la base, créer l'utilisateur, accorder les droits, rester
+cohérent avec le fichier `.env`, puis comprendre pourquoi une connexion échoue…
+Youcadb automatise tout cela :
+
+- **Un seul outil pour l'initialisation, la création et le diagnostic** — fini le
+  jonglage entre `psql`/`mysql`, Docker et les fichiers de configuration.
+- **Des commandes sûres et idempotentes** — re-exécutables sans rien casser : la base
+  et l'utilisateur ne sont créés que s'ils n'existent pas encore.
+- **La détection plutôt que la configuration** — Youcadb lit votre projet (langage,
+  framework, drivers) et vous recommande le moteur adapté, plutôt que de vous faire
+  tout renseigner à la main.
+- **La sécurité par défaut** — aucun mot de passe dans l'historique du shell, aucun
+  secret affiché sur la sortie standard, et alerte si votre base est exposée sur
+  `0.0.0.0` ou si un secret est versionné dans Git.
+- **Multiplateforme** — Linux, macOS et Windows, avec des guides d'installation et du
+  démarrage natifs et une solution de repli Docker.
+
+### À qui s'adresse-t-il ?
+
+- **Développeuses et développeurs** (backend, fullstack, DevOps) qui souhaitent préparer
+  leur environnement PostgreSQL/MySQL en quelques secondes, sans copier-coller de
+  commandes SQL.
+- **Équipes** qui veulent un onboarding reproductible : les mêmes commandes, la même
+  configuration, une base et un utilisateur créés à l'identique sur chaque poste de
+  travail.
+
+---
+
 ## Fonctionnalités
 
 - **Détection automatique de projet** — analyse `pyproject.toml`, `package.json`,
