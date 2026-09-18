@@ -39,7 +39,7 @@ def _wait_for_port(host: str, port: int, attempts: int = 10, delay: float = 2.0)
 
 def _try_start_docker(engine_name: str, host: str, port: int, user: str, password: str) -> bool:
     """Start a dedicated container and wait for the engine to accept connections."""
-    guide = install_guide(engine_name, detect_system())
+    guide = install_guide(engine_name, detect_system(), docker_port=port, docker_password=password)
     typer.echo(f"  Starting: {guide.docker_command}", err=True)
     try:
         proc = subprocess.run(shlex.split(guide.docker_command), capture_output=True, timeout=30)
@@ -49,7 +49,9 @@ def _try_start_docker(engine_name: str, host: str, port: int, user: str, passwor
         return False
 
     if not started:
-        typer.echo("  The Docker container could not be started.", err=True)
+        stderr = (proc.stderr or b"").decode(errors="replace").strip().splitlines()
+        detail = f": {stderr[-1]}" if stderr else ""
+        typer.echo(f"  The Docker container could not be started{detail}.", err=True)
         return False
 
     engine = get_engine(engine_name)

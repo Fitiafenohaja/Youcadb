@@ -80,6 +80,25 @@ def test_install_guide_docker_commands() -> None:
     assert "mysql:8" in install_guide("mysql", _system("linux")).docker_command
 
 
+def test_install_guide_docker_command_custom_port_and_password() -> None:
+    postgres = install_guide(
+        "postgres", _system("linux"), docker_port=5435, docker_password="s3cret"
+    )
+    assert "-p 5435:5432" in postgres.docker_command
+    assert "POSTGRES_PASSWORD=s3cret" in postgres.docker_command
+    assert "--name yourca-pg-5435" in postgres.docker_command
+
+    mysql = install_guide("mysql", _system("linux"), docker_port=13306, docker_password="mo")
+    assert "-p 13306:3306" in mysql.docker_command
+    assert "MYSQL_ROOT_PASSWORD=mo" in mysql.docker_command
+    assert "--name yourca-mysql-13306" in mysql.docker_command
+
+
+def test_install_guide_docker_command_quotes_password() -> None:
+    guide = install_guide("postgres", _system("linux"), docker_password="pa ss word")
+    assert "POSTGRES_PASSWORD='pa ss word'" in guide.docker_command
+
+
 def test_detect_distro_returns_none_on_errors(monkeypatch) -> None:
     import platform
 

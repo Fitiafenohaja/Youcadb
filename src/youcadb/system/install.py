@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -38,15 +39,35 @@ def _detect_distro() -> str | None:
     return None
 
 
-def install_guide(engine: str, system: SystemInfo) -> InstallGuide:
-    """Return OS-aware install/start/docker guidance for a database engine."""
+def install_guide(
+    engine: str,
+    system: SystemInfo,
+    docker_port: int | None = None,
+    docker_password: str = "",
+) -> InstallGuide:
+    """Return OS-aware install/start/docker guidance for a database engine.
+
+    ``docker_port`` is the host port the container should publish (defaults to
+    the engine's native port); ``docker_password`` sets the admin password used
+    by the container (defaults to the engine's conventional development value).
+    The container name is derived from the port so parallel instances do not clash.
+    """
     os_name = system.os_name
 
-    docker_command = (
-        "docker run --name yourca-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:17"
-        if engine == "postgres"
-        else "docker run --name yourca-mysql -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 -d mysql:8"
-    )
+    if engine == "postgres":
+        port = docker_port or 5432
+        pw = shlex.quote(docker_password or "postgres")
+        docker_command = (
+            f"docker run --name yourca-pg-{port} -e POSTGRES_PASSWORD={pw} "
+            f"-p {port}:5432 -d postgres:17"
+        )
+    else:
+        port = docker_port or 3306
+        pw = shlex.quote(docker_password or "root")
+        docker_command = (
+            f"docker run --name yourca-mysql-{port} -e MYSQL_ROOT_PASSWORD={pw} "
+            f"-p {port}:3306 -d mysql:8"
+        )
 
     if os_name == "darwin":
         if engine == "postgres":
