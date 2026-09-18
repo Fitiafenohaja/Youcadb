@@ -95,14 +95,28 @@ def test_status_with_config(tmp_path, monkeypatch) -> None:
 
 def test_doctor_no_config(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    with patch("youcadb.commands.doctor.get_engine") as mock_get:
-        mock_engine = MagicMock()
-        mock_engine.name = "PostgreSQL"
-        mock_engine.default_port = 5432
-        mock_engine.is_available.return_value = False
-        mock_get.return_value = mock_engine
-        with patch("youcadb.commands.doctor.select_menu", return_value="postgres"):
-            result = runner.invoke(app, ["doctor"])
+    mock_engine = MagicMock()
+    mock_engine.name = "PostgreSQL"
+    mock_engine.default_port = 5432
+    mock_engine.is_available.return_value = False
+    mock_engine.connect.return_value = MagicMock(
+        success=False, message="connection refused", server_version=None
+    )
+    with (
+        patch("youcadb.commands.doctor.get_engine", return_value=mock_engine),
+        patch("youcadb.doctor.get_engine", return_value=mock_engine),
+        patch("youcadb.system.install.install_guide") as mock_guide,
+        patch("youcadb.commands.doctor.select_menu", return_value="postgres"),
+    ):
+        from youcadb.system.install import InstallGuide
+
+        mock_guide.return_value = InstallGuide(
+            engine="postgres",
+            install_commands=["sudo apt install postgresql"],
+            start_commands=["sudo systemctl start postgresql"],
+            docker_command="docker run ...",
+        )
+        result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
     assert "DOCTOR" in result.stdout
 

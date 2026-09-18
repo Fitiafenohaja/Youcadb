@@ -65,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `youcadb doctor` no longer reports a running server as "down" when the stored
+  credentials are rejected (e.g. `fe_sendauth: no password supplied`): authentication
+  rejections on the server and database probes are warnings pointing to `youcadb init`
+  instead of a false "start the service" error.
+
 - `youcadb create` Docker fallback now honours the chosen host port and admin
   password (unique container name derived from the port), instead of always trying
   the default port — which previously collided with an existing instance and failed.

@@ -9,6 +9,7 @@ from youcadb.doctor import (
     CheckResult,
     DiagnosticReport,
     check_config_vars,
+    check_database,
     check_engine_driver,
     check_mysql_auth_plugin,
     check_security,
@@ -180,11 +181,45 @@ def test_check_service_running_denied_access_is_warning() -> None:
         )
     assert result.ok is False
     assert result.kind == "warning"
-    assert "denied access" in result.message
+    assert "authentication was rejected" in result.message
 
     mock_engine.connect.assert_called_with(
         host="localhost", port=5432, user="app_user", password="pw", database="appdb"
     )
+
+
+def test_check_service_running_no_password_is_warning() -> None:
+    fake_system = SystemInfo(os_name="linux", python_version="3.12")
+    mock_engine = MagicMock()
+    mock_engine.name = "PostgreSQL"
+    mock_engine.default_port = 5432
+    mock_engine.connect.return_value = MagicMock(
+        success=False,
+        message="connection failed: fe_sendauth: no password supplied",
+        server_version=None,
+    )
+    with patch("youcadb.doctor.get_engine", return_value=mock_engine):
+        result = check_service_running("postgres", fake_system)
+    assert result.ok is False
+    assert result.kind == "warning"
+    assert "authentication was rejected" in result.message
+    assert "systemctl start" not in (result.fix or "")
+
+
+def test_check_database_auth_rejection_is_warning() -> None:
+    mock_engine = MagicMock()
+    mock_engine.name = "PostgreSQL"
+    mock_engine.default_port = 5432
+    mock_engine.connect.return_value = MagicMock(
+        success=False,
+        message="connection failed: fe_sendauth: no password supplied",
+        server_version=None,
+    )
+    with patch("youcadb.doctor.get_engine", return_value=mock_engine):
+        result = check_database("postgres", "", "localhost", 5432, "postgres", "")
+    assert result.ok is False
+    assert result.kind == "warning"
+    assert "youcadb init" in (result.fix or "")
 
 
 def test_run_diagnostics_passes_engine_name() -> None:

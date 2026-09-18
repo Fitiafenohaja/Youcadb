@@ -131,6 +131,26 @@ def check_system_engine(engine_name: str, system: SystemInfo) -> CheckResult:
     )
 
 
+def _is_auth_rejection(message: str) -> bool:
+    """Return True when a connection error means the server is up but the
+    credentials or configured database were rejected (not a connectivity issue)."""
+    lowered = message.lower()
+    return any(
+        token in lowered
+        for token in (
+            "password authentication failed",
+            "no password supplied",
+            "fe_sendauth",
+            "authentication failed",
+            "access denied",
+            "permission denied",
+            "could not connect because the database does not exist",
+            "does not exist",
+            "unknown database",
+        )
+    )
+
+
 def check_service_running(
     engine_name: str,
     system: SystemInfo,
@@ -186,20 +206,14 @@ def check_service_running(
         )
 
     # Distinguish "installed but stopped" vs "cannot auth" vs "server down".
-    message_lower = result.message.lower()
     if "driver not installed" in result.message:
         kind = "error"
         fix_text = "\n".join(guide.install_commands)
         message = f"{engine.name} driver not installed"
-    elif (
-        "password authentication failed" in message_lower
-        or "access denied" in message_lower
-        or "permission denied" in message_lower
-        or "does not exist" in message_lower
-    ):
+    elif _is_auth_rejection(result.message):
         kind = "warning"
-        fix_text = "Check the admin credentials or the .youcadb.toml configuration."
-        message = f"{engine.name} reachable but the configured user/database was denied access"
+        fix_text = "Run 'youcadb init' to create the configuration, or check its credentials."
+        message = f"{engine.name} reachable but authentication was rejected (check credentials)"
     else:
         kind = "error"
         fix_text = "\n".join(guide.start_commands)
@@ -230,6 +244,14 @@ def check_database(
             ok=True,
             message=result.message,
             kind="info",
+        )
+    if _is_auth_rejection(result.message):
+        return CheckResult(
+            name="Database connection",
+            ok=False,
+            message=result.message,
+            kind="warning",
+            fix="Run 'youcadb init' to configure the project, or check its credentials.",
         )
     return CheckResult(
         name="Database connection",
