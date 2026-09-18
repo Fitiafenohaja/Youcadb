@@ -148,6 +148,7 @@ class PostgresEngine(Engine):
         admin_user: str = "",
         admin_password: str = "",
         port: int | None = None,
+        user_host: str = "%",
     ) -> OperationResult:
         try:
             _validate_identifier(username)

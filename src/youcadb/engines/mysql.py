@@ -137,10 +137,11 @@ class MySQLEngine(Engine):
         admin_user: str = "",
         admin_password: str = "",
         port: int | None = None,
+        user_host: str = "%",
     ) -> OperationResult:
         try:
             _validate_identifier(username)
-            _validate_identifier(host)
+            _validate_identifier(user_host)
             if database:
                 _validate_identifier(database)
         except ValueError as exc:
@@ -162,15 +163,19 @@ class MySQLEngine(Engine):
             with conn.cursor() as cur:
                 cur.execute(
                     "CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY %s",
-                    (username, host, password),
+                    (username, user_host, password),
                 )
                 if database:
                     cur.execute(
-                        f"GRANT ALL PRIVILEGES ON `{database}`.* TO %s@%s", (username, host)
+                        f"GRANT ALL PRIVILEGES ON `{database}`.* TO %s@%s",
+                        (username, user_host),
                     )
                     cur.execute("FLUSH PRIVILEGES")
             conn.close()
-            return OperationResult(success=True, message=f"User '{username}'@'{host}' created")
+            return OperationResult(
+                success=True,
+                message=f"User '{username}'@'{user_host}' created",
+            )
         except ImportError:
             return OperationResult(success=False, message="pymysql driver not installed")
         except Exception as exc:

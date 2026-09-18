@@ -70,8 +70,8 @@ def test_postgres_create_user_and_connect() -> None:
         host=host,
         database=db_name,
         port=port,
-        user=user,
-        password=password,
+        admin_user=user,
+        admin_password=password,
     )
     assert result.success
 

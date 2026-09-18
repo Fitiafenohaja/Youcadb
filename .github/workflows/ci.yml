@@ -92,6 +92,8 @@ jobs:
           MYSQL_USER: testuser
           MYSQL_PASSWORD: testpass
           MYSQL_DATABASE: testdb
+          MYSQL_ADMIN_USER: root
+          MYSQL_ADMIN_PASSWORD: rootpass
         run: |
           pytest --cov=youcadb --cov-report=xml --cov-report=term-missing
       - name: Upload coverage

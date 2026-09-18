@@ -71,8 +71,13 @@ class Engine(ABC):
         admin_user: str = "",
         admin_password: str = "",
         port: int | None = None,
+        user_host: str = "%",
     ) -> OperationResult:
-        """Create a user and grant permissions."""
+        """Create a user and grant permissions.
+
+        ``host`` is the server the admin connects to; ``user_host`` is the host
+        mask the created user may connect from (ignored by PostgreSQL).
+        """
 
     @abstractmethod
     def test_connection(

@@ -11,6 +11,14 @@ from youcadb.engines.mysql import MySQLEngine
 pytestmark = pytest.mark.integration
 
 
+def _mysql_admin() -> tuple[str, str]:
+    """Return the admin credentials for database/user management."""
+    return (
+        os.environ.get("MYSQL_ADMIN_USER", "root"),
+        os.environ.get("MYSQL_ADMIN_PASSWORD", ""),
+    )
+
+
 @pytest.mark.skipif(
     not os.environ.get("MYSQL_HOST"),
     reason="MySQL service not available",
@@ -36,16 +44,15 @@ def test_mysql_create_and_drop_database() -> None:
     engine = MySQLEngine()
     host = os.environ.get("MYSQL_HOST", "localhost")
     port = int(os.environ.get("MYSQL_PORT", "3306"))
-    user = os.environ.get("MYSQL_USER", "root")
-    password = os.environ.get("MYSQL_PASSWORD", "")
+    admin_user, admin_password = _mysql_admin()
 
     result = engine.create_database(
-        "youcadb_test_db", host=host, port=port, user=user, password=password
+        "youcadb_test_db", host=host, port=port, user=admin_user, password=admin_password
     )
     assert result.success
 
     drop_result = engine.drop_database(
-        "youcadb_test_db", host=host, port=port, user=user, password=password
+        "youcadb_test_db", host=host, port=port, user=admin_user, password=admin_password
     )
     assert drop_result.success
 
@@ -59,19 +66,18 @@ def test_mysql_create_user_and_connect() -> None:
     engine = MySQLEngine()
     host = os.environ.get("MYSQL_HOST", "localhost")
     port = int(os.environ.get("MYSQL_PORT", "3306"))
-    user = os.environ.get("MYSQL_USER", "root")
-    password = os.environ.get("MYSQL_PASSWORD", "")
+    admin_user, admin_password = _mysql_admin()
 
     db_name = "youcadb_user_db"
-    engine.create_database(db_name, host=host, port=port, user=user, password=password)
+    engine.create_database(db_name, host=host, port=port, user=admin_user, password=admin_password)
     result = engine.create_user(
         "youcadb_user",
         "youcadb_pass",
-        host="%",
+        host=host,
         database=db_name,
         port=port,
-        user=user,
-        password=password,
+        admin_user=admin_user,
+        admin_password=admin_password,
     )
     assert result.success
 
@@ -80,4 +86,4 @@ def test_mysql_create_user_and_connect() -> None:
     )
     assert conn.success
 
-    engine.drop_database(db_name, host=host, port=port, user=user, password=password)
+    engine.drop_database(db_name, host=host, port=port, user=admin_user, password=admin_password)

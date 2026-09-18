@@ -65,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Integration tests (`tests/integration`) use the current `Engine.create_user` contract
+  (`admin_user` / `admin_password`) and MySQL admin credentials instead of the
+  service-scoped `testuser`, fixing the Linux CI matrix (Python 3.13/3.14).
 - `youcadb doctor` « server » probe now connects through the host/port/database from
   the project configuration instead of probing the maintenance database with the app
   credentials, avoiding a false "authentication failed" when the app user has no access
