@@ -132,7 +132,13 @@ def check_system_engine(engine_name: str, system: SystemInfo) -> CheckResult:
 
 
 def check_service_running(
-    engine_name: str, system: SystemInfo, user: str = "", password: str = ""
+    engine_name: str,
+    system: SystemInfo,
+    host: str = "localhost",
+    port: int | None = None,
+    database: str = "",
+    user: str = "",
+    password: str = "",
 ) -> CheckResult:
     """Check if the DB service is running."""
     from youcadb.system.install import install_guide
@@ -161,7 +167,15 @@ def check_service_running(
     # Attempt real connection to decide running vs installed-but-stopped.
     engine = get_engine(engine_name)
     effective_user = user or ("postgres" if engine_name == "postgres" else "root")
-    result = engine.connect(host="localhost", user=effective_user, password=password)
+    # Probe through the configured database when known, otherwise the maintenance DB.
+    effective_db = database or ("postgres" if engine_name == "postgres" else "")
+    result = engine.connect(
+        host=host,
+        port=port or engine.default_port,
+        user=effective_user,
+        password=password,
+        database=effective_db,
+    )
 
     if result.success:
         return CheckResult(
@@ -172,17 +186,20 @@ def check_service_running(
         )
 
     # Distinguish "installed but stopped" vs "cannot auth" vs "server down".
-    if "not installed" in result.message:
+    message_lower = result.message.lower()
+    if "driver not installed" in result.message:
         kind = "error"
         fix_text = "\n".join(guide.install_commands)
         message = f"{engine.name} driver not installed"
     elif (
-        "password authentication failed" in result.message.lower()
-        or "access denied" in result.message.lower()
+        "password authentication failed" in message_lower
+        or "access denied" in message_lower
+        or "permission denied" in message_lower
+        or "does not exist" in message_lower
     ):
         kind = "warning"
         fix_text = "Check the admin credentials or the .youcadb.toml configuration."
-        message = f"{engine.name} reachable but authentication failed"
+        message = f"{engine.name} reachable but the configured user/database was denied access"
     else:
         kind = "error"
         fix_text = "\n".join(guide.start_commands)
@@ -458,7 +475,17 @@ def run_diagnostics(
 
     report.add(check_engine_driver(engine_name))
     report.add(check_system_engine(engine_name, system))
-    report.add(check_service_running(engine_name, system, user=user, password=password))
+    report.add(
+        check_service_running(
+            engine_name,
+            system,
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+        )
+    )
     report.add(check_database(engine_name, database, host, port, user, password))
     for check in check_config_vars(engine_name, env):
         report.add(check)

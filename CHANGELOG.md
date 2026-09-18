@@ -65,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `youcadb doctor` « server » probe now connects through the host/port/database from
+  the project configuration instead of probing the maintenance database with the app
+  credentials, avoiding a false "authentication failed" when the app user has no access
+  to the system database. Access denials are reported as a warning, not an error.
 - PostgreSQL `CREATE USER` password escaping (placeholders are invalid in DDL).
 - Database/user creation is now idempotent across both engines.
 - `youcadb create` with a missing Python driver now shows install/start guidance
