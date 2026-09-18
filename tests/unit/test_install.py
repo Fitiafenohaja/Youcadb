@@ -86,12 +86,12 @@ def test_install_guide_docker_command_custom_port_and_password() -> None:
     )
     assert "-p 5435:5432" in postgres.docker_command
     assert "POSTGRES_PASSWORD=s3cret" in postgres.docker_command
-    assert "--name yourca-pg-5435" in postgres.docker_command
+    assert "--name youcadb-pg-5435" in postgres.docker_command
 
     mysql = install_guide("mysql", _system("linux"), docker_port=13306, docker_password="mo")
     assert "-p 13306:3306" in mysql.docker_command
     assert "MYSQL_ROOT_PASSWORD=mo" in mysql.docker_command
-    assert "--name yourca-mysql-13306" in mysql.docker_command
+    assert "--name youcadb-mysql-13306" in mysql.docker_command
 
 
 def test_install_guide_docker_command_quotes_password() -> None:

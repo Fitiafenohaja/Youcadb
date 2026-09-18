@@ -58,14 +58,14 @@ def install_guide(
         port = docker_port or 5432
         pw = shlex.quote(docker_password or "postgres")
         docker_command = (
-            f"docker run --name yourca-pg-{port} -e POSTGRES_PASSWORD={pw} "
+            f"docker run --name youcadb-pg-{port} -e POSTGRES_PASSWORD={pw} "
             f"-p {port}:5432 -d postgres:17"
         )
     else:
         port = docker_port or 3306
         pw = shlex.quote(docker_password or "root")
         docker_command = (
-            f"docker run --name yourca-mysql-{port} -e MYSQL_ROOT_PASSWORD={pw} "
+            f"docker run --name youcadb-mysql-{port} -e MYSQL_ROOT_PASSWORD={pw} "
             f"-p {port}:3306 -d mysql:8"
         )
 
