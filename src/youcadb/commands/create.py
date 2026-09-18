@@ -57,7 +57,7 @@ def _try_start_docker(engine_name: str, host: str, port: int, user: str, passwor
     engine = get_engine(engine_name)
     typer.echo("  Waiting for the container to accept connections...", err=True)
     if engine.is_available():
-        for _ in range(10):
+        for _ in range(30):
             result = engine.connect(host=host, port=port, user=user, password=password)
             if result.success:
                 typer.echo("  \u2713 Container is responding.", err=True)

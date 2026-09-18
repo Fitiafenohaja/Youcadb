@@ -68,7 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `youcadb create` Docker fallback now honours the chosen host port and admin
   password (unique container name derived from the port), instead of always trying
   the default port — which previously collided with an existing instance and failed.
-  Docker start failures now show the underlying reason.
+  Docker start failures now show the underlying reason, and the tool waits up to a
+  minute for the freshly-started container to accept connections.
 
 - Integration tests (`tests/integration`) use the current `Engine.create_user` contract
   (`admin_user` / `admin_password`) and MySQL admin credentials instead of the
