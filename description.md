@@ -38,6 +38,13 @@ pip install youcadb[mysql]    # + pymysql (MySQL)
 pip install youcadb[all]      # les deux drivers
 ```
 
+Via **pipx** :
+
+```bash
+pipx install youcadb          # installation
+pipx upgrade youcadb          # mise à jour du paquet
+```
+
 ---
 
 ## Prise en main rapide
