@@ -63,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (or points to `youcadb init`) instead of a plain banner.
 - Added `questionary` and `tomli` (for Python < 3.11) runtime dependencies.
 
+### Changed
+
+- `youcadb doctor` suggests provisioning an ephemeral Docker container
+  (`youcadb create <engine>`) instead of `systemctl start` when the engine is not
+  installed natively but Docker is running.
+
 ### Fixed
 
 - `youcadb doctor` no longer reports a running server as "down" when the stored

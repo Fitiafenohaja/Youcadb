@@ -214,6 +214,13 @@ def check_service_running(
         kind = "warning"
         fix_text = "Run 'youcadb init' to create the configuration, or check its credentials."
         message = f"{engine.name} reachable but authentication was rejected (check credentials)"
+    elif system.docker_running:
+        kind = "error"
+        fix_text = (
+            f"Run 'youcadb create {engine_name}' to start an ephemeral Docker "
+            "container, or start a native installation."
+        )
+        message = result.message
     else:
         kind = "error"
         fix_text = "\n".join(guide.start_commands)

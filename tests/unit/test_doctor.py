@@ -165,6 +165,33 @@ def test_check_service_running_unreachable() -> None:
     assert result.kind == "error"
 
 
+def test_check_service_running_unreachable_prefers_docker() -> None:
+    fake_system = SystemInfo(os_name="linux", python_version="3.12", docker_running=True)
+    mock_engine = MagicMock()
+    mock_engine.name = "PostgreSQL"
+    mock_engine.default_port = 5432
+    mock_engine.connect.return_value = MagicMock(
+        success=False, message="connection refused", server_version=None
+    )
+    with (
+        patch("youcadb.doctor.get_engine", return_value=mock_engine),
+        patch("youcadb.system.install.install_guide") as mock_guide,
+    ):
+        from youcadb.system.install import InstallGuide
+
+        mock_guide.return_value = InstallGuide(
+            engine="postgres",
+            install_commands=["sudo apt install postgresql"],
+            start_commands=["sudo systemctl start postgresql"],
+            docker_command="docker run ...",
+        )
+        result = check_service_running("postgres", fake_system)
+    assert result.ok is False
+    assert result.kind == "error"
+    assert "youcadb create postgres" in (result.fix or "")
+    assert "systemctl" not in (result.fix or "")
+
+
 def test_check_service_running_denied_access_is_warning() -> None:
     fake_system = SystemInfo(os_name="linux", python_version="3.12")
     mock_engine = MagicMock()
