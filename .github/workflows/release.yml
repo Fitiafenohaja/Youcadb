@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0  # needed by hatch-vcs
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - run: pip install build
       - run: python -m build
       - uses: actions/upload-artifact@v4
