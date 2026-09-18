@@ -92,6 +92,35 @@ def _offer_missing_engine(engine_name: str, system: SystemInfo) -> None:
             typer.echo(f"    {cmd}", err=True)
 
 
+def _start_docker_daemon(system: SystemInfo) -> bool:
+    """Best-effort start of the Docker daemon when installed but not running."""
+    if system.os_name == "darwin":
+        commands = ["open -a Docker"]
+    elif system.os_name.startswith("linux"):
+        commands = ["sudo systemctl start docker", "sudo service docker start"]
+    else:
+        commands = []
+    for cmd in commands:
+        typer.echo(f"  Running: {cmd}", err=True)
+        try:
+            proc = subprocess.run(shlex.split(cmd), capture_output=True, timeout=30)
+        except Exception as exc:
+            typer.echo(f"  Could not start Docker: {exc}", err=True)
+            return False
+        if proc.returncode == 0:
+            for _ in range(10):
+                if detect_system().docker_running:
+                    return True
+                time.sleep(2)
+            return False
+    typer.echo(
+        "  Docker daemon could not be started automatically. Start it manually, "
+        "then run 'youcadb create' again.",
+        err=True,
+    )
+    return False
+
+
 def _offer_docker(
     engine_name: str,
     host: str,
@@ -101,6 +130,12 @@ def _offer_docker(
     system: SystemInfo,
 ) -> bool:
     """Offer to start a Docker container for the engine when Docker is running."""
+    if system.docker_available and not system.docker_running:
+        if not confirm("Docker is installed but not running. Start it now?"):
+            return False
+        if not _start_docker_daemon(system):
+            return False
+        system = detect_system()
     if not system.docker_running:
         return False
     typer.echo("", err=True)

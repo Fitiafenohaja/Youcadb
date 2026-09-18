@@ -192,6 +192,24 @@ def test_check_service_running_unreachable_prefers_docker() -> None:
     assert "systemctl" not in (result.fix or "")
 
 
+def test_check_service_running_unreachable_suggests_docker_daemon() -> None:
+    fake_system = SystemInfo(
+        os_name="linux", python_version="3.12", docker_available=True, docker_running=False
+    )
+    mock_engine = MagicMock()
+    mock_engine.name = "PostgreSQL"
+    mock_engine.default_port = 5432
+    mock_engine.connect.return_value = MagicMock(
+        success=False, message="connection refused", server_version=None
+    )
+    with patch("youcadb.doctor.get_engine", return_value=mock_engine):
+        result = check_service_running("postgres", fake_system)
+    assert result.ok is False
+    assert result.kind == "error"
+    assert "systemctl start docker" in (result.fix or "")
+    assert "youcadb create postgres" in (result.fix or "")
+
+
 def test_check_service_running_denied_access_is_warning() -> None:
     fake_system = SystemInfo(os_name="linux", python_version="3.12")
     mock_engine = MagicMock()

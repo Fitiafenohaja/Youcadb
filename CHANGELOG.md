@@ -65,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `youcadb doctor` and `youcadb create` now handle the case where Docker is
+  installed but its daemon is stopped: `create` offers to start it (best-effort,
+  per-OS command) before proposing a container or a native install, and `doctor`
+  points to starting the daemon instead of a native install when that is the
+  blocker.
 - `youcadb doctor` suggests provisioning an ephemeral Docker container
   (`youcadb create <engine>`) instead of `systemctl start` when the engine is not
   installed natively but Docker is running.

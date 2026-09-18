@@ -221,6 +221,14 @@ def check_service_running(
             "container, or start a native installation."
         )
         message = result.message
+    elif system.docker_available:
+        kind = "error"
+        fix_text = (
+            "Docker is installed but not running. Start the daemon (e.g. "
+            "'sudo systemctl start docker'), then run "
+            f"'youcadb create {engine_name}' to start an ephemeral container."
+        )
+        message = result.message
     else:
         kind = "error"
         fix_text = "\n".join(guide.start_commands)

@@ -195,6 +195,56 @@ def test_create_ensure_engine_unreachable_docker_offer() -> None:
     assert "does not appear to be installed" in result.stderr
 
 
+def test_create_engine_unreachable_starts_docker_daemon() -> None:
+    engine = _mock_engine(connect_ok=False)
+    stopped = MagicMock(
+        psql_available=False,
+        mysql_client_available=False,
+        pg_service_available=False,
+        mysql_service_available=False,
+        docker_available=True,
+        docker_running=False,
+    )
+    running = MagicMock(docker_available=True, docker_running=True)
+    with (
+        patch("youcadb.commands.create.get_engine", return_value=engine),
+        patch(
+            "youcadb.commands.create.detect_system",
+            side_effect=[stopped, running, running],
+        ),
+        patch("youcadb.commands.create.confirm", return_value=True),
+        patch(
+            "youcadb.commands.create.subprocess.run",
+            return_value=MagicMock(returncode=0),
+        ),
+        patch("youcadb.commands.create._try_start_docker", return_value=True),
+    ):
+        result = runner.invoke(app, ["create", "postgres", "--no-interactive", "--name", "mydb"])
+    assert result.exit_code == 0
+    assert "Running: sudo systemctl start docker" in result.stderr
+    assert "created successfully" in result.stdout
+
+
+def test_create_engine_unreachable_daemon_declined() -> None:
+    engine = _mock_engine(connect_ok=False)
+    stopped = MagicMock(
+        psql_available=False,
+        mysql_client_available=False,
+        pg_service_available=False,
+        mysql_service_available=False,
+        docker_available=True,
+        docker_running=False,
+    )
+    with (
+        patch("youcadb.commands.create.get_engine", return_value=engine),
+        patch("youcadb.commands.create.detect_system", return_value=stopped),
+        patch("youcadb.commands.create.confirm", return_value=False),
+    ):
+        result = runner.invoke(app, ["create", "postgres", "--no-interactive", "--name", "mydb"])
+    assert result.exit_code == 1
+    assert "does not appear to be installed" in result.stderr
+
+
 def test_try_start_docker_success() -> None:
     engine = _mock_engine()
     with (
