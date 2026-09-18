@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from youcadb.ui.menu import confirm, select_menu
+from youcadb.ui.menu import confirm, password_input, select_menu, text_input
 
 
 def test_select_menu_valid_choice() -> None:
@@ -49,3 +49,30 @@ def test_confirm_no() -> None:
 def test_confirm_default_no() -> None:
     with patch("builtins.input", return_value=""):
         assert confirm("Proceed?") is False
+
+
+def test_confirm_default_yes() -> None:
+    with patch("builtins.input", return_value=""):
+        assert confirm("Proceed?", default=True) is True
+
+
+def test_confirm_eof_uses_default() -> None:
+    with patch("builtins.input", side_effect=EOFError):
+        assert confirm("Proceed?") is False
+    with patch("builtins.input", side_effect=EOFError):
+        assert confirm("Proceed?", default=True) is True
+
+
+def test_text_input_eof_uses_default() -> None:
+    with patch("builtins.input", side_effect=EOFError):
+        assert text_input("Name", default="mydb") == "mydb"
+    with patch("builtins.input", side_effect=EOFError):
+        assert text_input("Name") == ""
+
+
+def test_password_input_eof_returns_empty() -> None:
+    with (
+        patch.dict("sys.modules", {"questionary": None}),
+        patch("getpass.getpass", side_effect=EOFError),
+    ):
+        assert password_input("Password") == ""

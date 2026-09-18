@@ -12,6 +12,7 @@ repos:
       - id: mypy
         additional_dependencies:
           - typer>=0.12
+          - questionary>=2.0
           - pymysql
           - types-PyMySQL
           - "psycopg[binary]"

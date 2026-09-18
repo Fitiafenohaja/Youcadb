@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import typer
 
 from youcadb import config as config_model
-from youcadb.engines import get_engine
 from youcadb.ui.menu import password_input, text_input
 
 
@@ -30,7 +30,7 @@ def _prompt_missing(cfg: config_model.YoucaDBConfig, interactive: bool) -> None:
         default_user = "postgres" if db.engine == "postgres" else "root"
         db.user = text_input("Database user", default=default_user)
     if not db.password:
-        db.password = password_input("Database password")
+        db.password = os.environ.get("YOUCADB_PASSWORD", "") or password_input("Database password")
     if db.engine not in ("postgres", "mysql"):
         db.engine = "postgres"
 
@@ -60,7 +60,20 @@ def config_generate(
         raise typer.Exit(code=1) from exc
 
     typer.echo(f"Generated {output}")
-    typer.echo(f"  DATABASE_URL={cfg.database.database_url}")
+    typer.echo(f"  DATABASE_URL={cfg.database.redacted_database_url}")
+
+
+def _mask_password_lines(content: str) -> str:
+    """Replace password values with '***' so secrets never reach stdout."""
+    masked: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("password"):
+            indent = line[: len(line) - len(line.lstrip())]
+            masked.append(f'{indent}password = "***"')
+        else:
+            masked.append(line)
+    return "\n".join(masked).rstrip()
 
 
 def config_show(
@@ -74,7 +87,7 @@ def config_show(
         return
 
     typer.echo("Current configuration:")
-    typer.echo(config_path.read_text(encoding="utf-8").rstrip())
+    typer.echo(_mask_password_lines(config_path.read_text(encoding="utf-8")))
 
 
 def config(
@@ -94,12 +107,3 @@ def config(
     else:
         typer.echo(f"Unknown config subcommand: '{subcommand}'", err=True)
         raise typer.Exit(code=1)
-
-
-def get_engine_name(path: str) -> str:
-    """Return the configured engine name or a default."""
-    cfg = config_model.load_config(path)
-    if cfg is None:
-        return "postgres"
-    get_engine(cfg.database.engine)
-    return cfg.database.engine

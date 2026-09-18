@@ -169,3 +169,230 @@ def test_detect_ruby_mysql2(tmp_path) -> None:
     result = detect_project(str(tmp_path))
     assert result.language == "Ruby"
     assert result.engine_hint == "mysql"
+
+
+def test_detect_node_express_mysql(tmp_path) -> None:
+    import json
+
+    pkg = {"dependencies": {"express": "^4", "mysql": "^2"}}
+    (tmp_path / "package.json").write_text(json.dumps(pkg))
+    result = detect_project(str(tmp_path))
+    assert result.language == "Node.js"
+    assert "Express" in (result.framework or "")
+    assert result.engine_hint == "mysql"
+
+
+def test_detect_php_multiple_drivers_ambiguous(tmp_path) -> None:
+    import json
+
+    (tmp_path / "composer.json").write_text(
+        json.dumps({"require": {"ext-pdo_pgsql": "*", "ext-pdo_mysql": "*"}})
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "PHP"
+    assert result.engine_hint is None
+
+
+def test_detect_java_maven_spring_postgres(tmp_path) -> None:
+    (tmp_path / "pom.xml").write_text(
+        """<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <groupId>com.example</groupId>
+  <artifactId>demo</artifactId>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+    </dependency>
+  </dependencies>
+</project>
+"""
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Java"
+    assert "Spring Boot" in (result.framework or "")
+    assert result.engine_hint == "postgres"
+    assert result.database_driver == "postgresql"
+
+
+def test_detect_java_gradle_spring_mysql(tmp_path) -> None:
+    (tmp_path / "build.gradle.kts").write_text(
+        "dependencies {\n"
+        '  implementation("org.springframework.boot:spring-boot-starter-data-jpa")\n'
+        '  runtimeOnly("com.mysql:mysql-connector-j")\n'
+        "}\n"
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Java"
+    assert "Spring Boot" in (result.framework or "")
+    assert result.engine_hint == "mysql"
+
+
+def test_detect_java_multiple_drivers_ambiguous(tmp_path) -> None:
+    (tmp_path / "pom.xml").write_text(
+        """<project>
+  <dependencies>
+    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>
+    <dependency><groupId>com.mysql</groupId><artifactId>mysql-connector-j</artifactId></dependency>
+  </dependencies>
+</project>
+"""
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Java"
+    assert result.engine_hint is None
+    assert any("Multiple database drivers" in d for d in result.details)
+
+
+def test_detect_dotnet_aspnet_npgsql(tmp_path) -> None:
+    (tmp_path / "App.csproj").write_text(
+        """<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc" Version="8.0.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.1" />
+  </ItemGroup>
+</Project>
+"""
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == ".NET"
+    assert "ASP.NET Core" in (result.framework or "")
+    assert result.engine_hint == "postgres"
+    assert any("Entity Framework Core" in d for d in result.details)
+
+
+def test_detect_dotnet_mysql_pomelo(tmp_path) -> None:
+    (tmp_path / "App.csproj").write_text(
+        """<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.0" />
+  </ItemGroup>
+</Project>
+"""
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == ".NET"
+    assert result.engine_hint == "mysql"
+    assert any("Entity Framework Core" in d for d in result.details)
+
+
+def test_detect_dotnet_sln_only(tmp_path) -> None:
+    (tmp_path / "App.sln").write_text("Microsoft Visual Studio Solution File\n")
+    result = detect_project(str(tmp_path))
+    assert result.language == ".NET"
+    assert result.engine_hint is None
+
+
+def test_detect_ruby_multiple_drivers_ambiguous(tmp_path) -> None:
+    (tmp_path / "Gemfile").write_text(
+        'source "https://rubygems.org"\ngem "pg"\ngem "mysql2"\ngem "rails"\n'
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Ruby"
+    assert result.engine_hint is None
+    assert any("Multiple database drivers" in d for d in result.details)
+
+
+def test_detect_node_psql_and_postgres_drivers(tmp_path) -> None:
+    import json
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"psql": "^3", "postgres": "^2"}})
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Node.js"
+    assert result.engine_hint == "postgres"
+
+
+def test_detect_dotnet_aspnet_without_web_sdk(tmp_path) -> None:
+    (tmp_path / "App.csproj").write_text(
+        """<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc" Version="8.0.0" />
+    <PackageReference Include="Npgsql" Version="8.0.1" />
+  </ItemGroup>
+</Project>
+"""
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == ".NET"
+    assert "ASP.NET Core" in (result.framework or "")
+    assert result.engine_hint == "postgres"
+
+
+def test_detect_java_gradle_postgres(tmp_path) -> None:
+    (tmp_path / "build.gradle").write_text(
+        "dependencies {\n    implementation 'org.postgresql:postgresql'\n}\n"
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Java"
+    assert result.engine_hint == "postgres"
+    assert result.database_driver == "postgresql"
+
+
+def test_detect_priority_java_beats_node(tmp_path) -> None:
+    import json
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"express": "^4", "pg": "^8"}})
+    )
+    (tmp_path / "pom.xml").write_text(
+        """<project>
+  <dependencies>
+    <dependency><groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId></dependency>
+    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>
+  </dependencies>
+</project>
+"""
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == "Java"
+    assert result.engine_hint == "postgres"
+
+
+def test_detect_priority_ruby_beats_node(tmp_path) -> None:
+    import json
+
+    (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"mysql2": "^3"}}))
+    (tmp_path / "Gemfile").write_text('source "https://rubygems.org"\ngem "rails"\ngem "pg"\n')
+    result = detect_project(str(tmp_path))
+    assert result.language == "Ruby"
+    assert result.engine_hint == "postgres"
+
+
+def test_detect_priority_python_beats_all(tmp_path) -> None:
+    import json
+
+    (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"express": "^4"}}))
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "t"\ndependencies = []\n')
+    result = detect_project(str(tmp_path))
+    assert result.language == "Python"
+
+
+def test_detect_dotnet_project_in_subdirectory(tmp_path) -> None:
+    sub = tmp_path / "src" / "App"
+    sub.mkdir(parents=True)
+    (sub / "App.csproj").write_text(
+        """<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.1" />
+  </ItemGroup>
+</Project>
+"""
+    )
+    result = detect_project(str(tmp_path))
+    assert result.language == ".NET"
+    assert result.engine_hint == "postgres"
+
+
+def test_detect_dotnet_sln_in_subdirectory(tmp_path) -> None:
+    sub = tmp_path / "sln"
+    sub.mkdir()
+    (sub / "App.sln").write_text("Microsoft Visual Studio Solution File\n")
+    result = detect_project(str(tmp_path))
+    assert result.language == ".NET"

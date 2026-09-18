@@ -9,13 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Detection of Java projects** (Maven `pom.xml`, Gradle `build.gradle`/`build.gradle.kts`)
+  with framework recognition (Spring Boot, Spring, Quarkus, Micronaut) and driver-based
+  engine hints (`org.postgresql:postgresql`, `com.mysql:mysql-connector-j`, MariaDB).
+- **Detection of .NET projects** (`*.csproj` / `*.sln`) with ASP.NET Core and Entity
+  Framework Core recognition, and PostgreSQL/MySQL engine hints from `Npgsql`,
+  `MySqlConnector`, `Pomelo.EntityFrameworkCore.MySql`…
+- **Backend-first detection priority**: Python, Java, .NET, Ruby and PHP now win over a
+  front-end `package.json` (Node.js) in monorepos; `.csproj`/`.sln` files nested up to two
+  levels deep are picked up as well.
+- **OS install guide tests**: Windows (winget), macOS (Homebrew), Ubuntu/Fedora and
+  unknown-distro fallback paths for `install_guide` and `default_unix_socket_user`.
+- **Python 3.14 support**: verified against 3.14 in the local/CI matrix, new
+  `Programming Language :: Python :: 3.14` classifier; the obsolete `typer[all]` extra
+  was dropped in favour of plain `typer>=0.12` (rich/shellingham are hard deps since
+  typer 0.27).
+- **Cross-platform CI**: lint/typecheck run on Python 3.14, and a new matrix job runs the
+  unit tests on macOS and Windows (Python 3.14); `.python-version` pins the dev version.
+- **README rewritten in French** with the detection matrix, security guarantees,
+  Python-version policy and cross-platform support.
 - **Full engine implementations** for PostgreSQL (`psycopg`) and MySQL (`pymysql`):
   connect with server-version reporting, idempotent database/user creation with
   privilege grants, drop with active-connection termination, and connection tests.
 - **Project detection**: scans `pyproject.toml`, `requirements.txt`, `package.json`,
-  `docker-compose.yml`, `.env`/`.env.example` to detect language (Python/Node.js),
-  framework (FastAPI, Flask, Django, SQLAlchemy, Express, NestJS, …) and the
-  recommended database engine from detected drivers.
+  `composer.json`, `Gemfile`, `docker-compose.yml`, `.env`/`.env.example` to detect the
+  language (Python, Node.js, PHP, Ruby), framework (FastAPI, Flask, Django, SQLAlchemy,
+  Express, NestJS, Laravel, …) and the recommended database engine from detected drivers.
 - **`youcadb init`**: interactive detection wizard that recommends an engine, handles
   existing config (with `--force`), and writes a real `.youcadb.toml`.
 - **`youcadb create`**: full wizard to create database + user + permissions, with
@@ -46,6 +65,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - PostgreSQL `CREATE USER` password escaping (placeholders are invalid in DDL).
 - Database/user creation is now idempotent across both engines.
+- `youcadb create` with a missing Python driver now shows install/start guidance
+  and (when available) offers a Docker container instead of stopping abruptly.
+
+### Security
+
+- Removed `--password` and `--admin-password` CLI flags: secrets could leak into
+  the shell history. Passwords are now read interactively (masked input) or from
+  the `YOUCADB_PASSWORD` / `YOUCADB_ADMIN_PASSWORD` environment variables.
+- `youcadb config generate` also honours `YOUCADB_PASSWORD` when set.
+- `youcadb config generate` and `youcadb config show` no longer print passwords on
+  stdout: the displayed `DATABASE_URL` is masked (`:***`) and `password` lines are
+  redacted in `config show`.
+- `confirm`, `text_input` and `password_input` degrade gracefully instead of
+  crashing when no terminal input is available (EOF / non-TTY).
 
 ## [0.1.0] - Initial scaffolding
 

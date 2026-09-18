@@ -23,10 +23,11 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
 dependencies = [
-    "typer[all]>=0.12",
+    "typer>=0.12",
     "questionary>=2.0",
     'tomli>=2.0; python_version < "3.11"',
 ]

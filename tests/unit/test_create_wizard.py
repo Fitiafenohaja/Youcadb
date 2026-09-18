@@ -52,8 +52,9 @@ def test_create_unknown_engine() -> None:
     assert "unknown engine" in result.stderr
 
 
-def test_create_noninteractive_success() -> None:
+def test_create_noninteractive_success(monkeypatch) -> None:
     engine = _mock_engine()
+    monkeypatch.setenv("YOUCADB_PASSWORD", "pw")
     with patch("youcadb.commands.create.get_engine", return_value=engine):
         result = runner.invoke(
             app,
@@ -65,8 +66,6 @@ def test_create_noninteractive_success() -> None:
                 "mydb",
                 "--user",
                 "bob",
-                "--password",
-                "pw",
             ],
         )
     assert result.exit_code == 0
@@ -85,10 +84,59 @@ def test_create_noninteractive_db_failure() -> None:
 
 def test_create_ensure_engine_driver_missing() -> None:
     engine = _mock_engine(available=False)
-    with patch("youcadb.commands.create.get_engine", return_value=engine):
+    system = MagicMock(
+        psql_available=False,
+        mysql_client_available=False,
+        pg_service_available=False,
+        mysql_service_available=False,
+        docker_running=False,
+    )
+    with (
+        patch("youcadb.commands.create.get_engine", return_value=engine),
+        patch("youcadb.commands.create.detect_system", return_value=system),
+    ):
         result = runner.invoke(app, ["create", "postgres", "--no-interactive", "--name", "mydb"])
     assert result.exit_code == 1
     assert "driver is not installed" in result.stderr
+
+
+def test_create_driver_missing_shows_install_guide() -> None:
+    engine = _mock_engine(available=False)
+    system = MagicMock(
+        psql_available=False,
+        mysql_client_available=False,
+        pg_service_available=False,
+        mysql_service_available=False,
+        docker_running=False,
+    )
+    with (
+        patch("youcadb.commands.create.get_engine", return_value=engine),
+        patch("youcadb.commands.create.detect_system", return_value=system),
+    ):
+        result = runner.invoke(app, ["create", "postgres", "--no-interactive", "--name", "mydb"])
+    assert result.exit_code == 1
+    assert "driver is not installed" in result.stderr
+    assert "Install it with" in result.stderr
+
+
+def test_create_driver_missing_docker_offer_still_blocks() -> None:
+    engine = _mock_engine(available=False)
+    system = MagicMock(
+        psql_available=False,
+        mysql_client_available=False,
+        pg_service_available=False,
+        mysql_service_available=False,
+        docker_running=True,
+    )
+    with (
+        patch("youcadb.commands.create.get_engine", return_value=engine),
+        patch("youcadb.commands.create.detect_system", return_value=system),
+        patch("youcadb.commands.create.confirm", return_value=True),
+        patch("youcadb.commands.create._try_start_docker", return_value=True),
+    ):
+        result = runner.invoke(app, ["create", "postgres", "--no-interactive", "--name", "mydb"])
+    assert result.exit_code == 1
+    assert "Python driver must be installed" in result.stderr
 
 
 def test_create_ensure_engine_unreachable_with_service() -> None:
@@ -209,6 +257,30 @@ def test_try_start_docker_subprocess_raises() -> None:
     assert ok is False
 
 
+def test_wait_for_port_success(monkeypatch) -> None:
+    import time
+
+    import youcadb.commands.create as create_mod
+
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    monkeypatch.setattr(create_mod.socket, "create_connection", lambda *_a, **_k: MagicMock())
+    assert create_mod._wait_for_port("localhost", 5432) is True
+
+
+def test_wait_for_port_never_opens(monkeypatch) -> None:
+    import time
+
+    import youcadb.commands.create as create_mod
+
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        create_mod.socket,
+        "create_connection",
+        MagicMock(side_effect=OSError("refused")),
+    )
+    assert create_mod._wait_for_port("localhost", 5432, attempts=3, delay=0.1) is False
+
+
 def test_create_interactive_success(tmp_path, monkeypatch) -> None:
     engine = _mock_engine()
 
@@ -246,15 +318,14 @@ def test_create_interactive_updates_config(tmp_path, monkeypatch) -> None:
     )
     eng = _mock_engine()
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("YOUCADB_PASSWORD", "apppw")
+    monkeypatch.setenv("YOUCADB_ADMIN_PASSWORD", "x")
     with (
         patch("youcadb.commands.create.get_engine", return_value=eng),
         patch("youcadb.commands.create.text_input", side_effect=["mydb", "bob", "5432"]),
-        patch("youcadb.commands.create.password_input", return_value="p"),
         patch("youcadb.commands.create.confirm", return_value=True),
     ):
-        result = runner.invoke(
-            app, ["create", "postgres", "--interactive", "--port", "5433", "--admin-password", "x"]
-        )
+        result = runner.invoke(app, ["create", "postgres", "--interactive", "--port", "5433"])
     assert result.exit_code == 0
     cfg = load_config(str(tmp_path))
     assert cfg is not None

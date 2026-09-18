@@ -46,7 +46,17 @@ def test_create_postgres_no_driver(tmp_path, monkeypatch) -> None:
     mock_engine.is_available.return_value = False
     mock_engine.name = "PostgreSQL"
     mock_engine.default_port = 5432
-    with patch("youcadb.commands.create.get_engine", return_value=mock_engine):
+    fake_system = MagicMock(
+        psql_available=False,
+        mysql_client_available=False,
+        pg_service_available=False,
+        mysql_service_available=False,
+        docker_running=False,
+    )
+    with (
+        patch("youcadb.commands.create.get_engine", return_value=mock_engine),
+        patch("youcadb.commands.create.detect_system", return_value=fake_system),
+    ):
         result = runner.invoke(app, ["create", "postgres", "--no-interactive"])
     assert result.exit_code == 1
     assert "driver" in result.stderr.lower()
@@ -158,3 +168,37 @@ def test_config_generate_creates_env(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     runner.invoke(app, ["config", "generate", "--no-interactive"])
     assert (tmp_path / ".env").exists()
+
+
+def test_config_generate_never_prints_password(tmp_path, monkeypatch) -> None:
+    from youcadb.config import DBConfig, YoucaDBConfig, save_config
+
+    save_config(
+        YoucaDBConfig(
+            project_name="p",
+            database=DBConfig(engine="postgres", name="mydb", user="admin", password="s3cret"),
+        ),
+        str(tmp_path),
+    )
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["config", "generate", "--no-interactive"])
+    assert result.exit_code == 0
+    assert "s3cret" not in result.stdout
+    assert ":***" in result.stdout
+
+
+def test_config_show_masks_password(tmp_path, monkeypatch) -> None:
+    from youcadb.config import DBConfig, YoucaDBConfig, save_config
+
+    save_config(
+        YoucaDBConfig(
+            project_name="p",
+            database=DBConfig(engine="postgres", name="mydb", user="admin", password="topsekrit"),
+        ),
+        str(tmp_path),
+    )
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["config", "show"])
+    assert result.exit_code == 0
+    assert "topsekrit" not in result.stdout
+    assert 'password = "***"' in result.stdout

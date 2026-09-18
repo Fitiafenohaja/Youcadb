@@ -45,7 +45,10 @@ def confirm(prompt: str, default: bool = False) -> bool:
         pass
 
     suffix = " [Y/n]: " if default else " [y/N]: "
-    answer = input(f"{prompt}{suffix}").strip().lower()
+    try:
+        answer = input(f"{prompt}{suffix}").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return default
     if not answer:
         return default
     return answer in ("y", "yes")
@@ -65,7 +68,10 @@ def password_input(prompt: str) -> str:
 
     import getpass
 
-    return getpass.getpass(f"{prompt}: ")
+    try:
+        return getpass.getpass(f"{prompt}: ")
+    except (EOFError, KeyboardInterrupt):
+        return ""
 
 
 def text_input(prompt: str, default: str = "") -> str:
@@ -82,7 +88,10 @@ def text_input(prompt: str, default: str = "") -> str:
     except Exception:
         pass
 
-    if default:
-        result = input(f"{prompt} [{default}]: ").strip()
-        return result if result else default
-    return input(f"{prompt}: ").strip()
+    try:
+        if default:
+            answer = input(f"{prompt} [{default}]: ").strip()
+            return answer if answer else default
+        return input(f"{prompt}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return default

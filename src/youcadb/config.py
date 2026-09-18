@@ -33,6 +33,13 @@ class DBConfig:
             return f"{scheme}://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
         return f"{scheme}://{self.user}@{self.host}:{self.port}/{self.name}"
 
+    @property
+    def redacted_database_url(self) -> str:
+        """Build a DATABASE_URL with the password masked for display."""
+        scheme = "postgresql" if self.engine == "postgres" else "mysql"
+        credentials = f"{self.user}:***" if self.password else self.user
+        return f"{scheme}://{credentials}@{self.host}:{self.port}/{self.name}"
+
 
 @dataclass
 class YoucaDBConfig:

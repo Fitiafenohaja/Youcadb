@@ -63,6 +63,30 @@ RUBY_FRAMEWORKS: dict[str, str] = {
     "rails": "Ruby on Rails",
     "sinatra": "Sinatra",
 }
+
+JAVA_PG_ARTIFACTS: set[str] = {"postgresql"}
+JAVA_MYSQL_ARTIFACTS: set[str] = {
+    "mysql-connector-j",
+    "mysql-connector-java",
+    "mariadb-java-client",
+}
+JAVA_FRAMEWORK_MARKERS: list[tuple[str, str]] = [
+    ("spring-boot", "Spring Boot"),
+    ("spring", "Spring"),
+    ("quarkus", "Quarkus"),
+    ("micronaut", "Micronaut"),
+]
+
+DOTNET_PG_PACKAGES: set[str] = {"npgsql", "npgsql.entityframeworkcore.postgresql"}
+DOTNET_MYSQL_PACKAGES: set[str] = {
+    "mysqlconnector",
+    "mysql.data",
+    "mysql.entityframeworkcore",
+    "pomelo.entityframeworkcore.mysql",
+}
+
+_GRADLE_COORD_RE = re.compile(r"""["'(]([\w]+\.[\w.]+):([\w][\w.-]*)["')]""")
+
 _NODE_PG_DRIVERS = ("pg", "psql", "postgres")
 _NODE_MYSQL_DRIVERS = ("mysql2", "mysql")
 
@@ -314,6 +338,136 @@ def _detect_ruby_project(
     return language, framework, driver, engine_hint, details
 
 
+def _read_pom_coords(pom_path: Path) -> list[tuple[str, str]]:
+    """Return (groupId, artifactId) pairs found in a Maven pom.xml."""
+    import xml.etree.ElementTree as ET
+
+    def localname(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    coords: list[tuple[str, str]] = []
+    try:
+        root = ET.fromstring(pom_path.read_text(encoding="utf-8"))
+        for dependency in root.iter():
+            if localname(dependency.tag) != "dependency":
+                continue
+            fields = {localname(child.tag): (child.text or "").strip() for child in dependency}
+            group, artifact = fields.get("groupId", ""), fields.get("artifactId", "")
+            if group and artifact:
+                coords.append((group, artifact))
+    except (ET.ParseError, OSError):
+        pass
+    return coords
+
+
+def _read_gradle_coords(path: Path) -> list[tuple[str, str]]:
+    """Return (groupId, artifactId) pairs found in a Gradle build file."""
+    coords: list[tuple[str, str]] = []
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return coords
+    for match in _GRADLE_COORD_RE.finditer(text):
+        group, artifact = match.group(1).strip(), match.group(2).strip()
+        if group and artifact:
+            coords.append((group, artifact))
+    return coords
+
+
+def _detect_java_project(
+    project_dir: Path,
+) -> tuple[str | None, str | None, str | None, str | None, list[str]]:
+    """Detect language/framework/driver from Java (Maven/Gradle) files."""
+    language = "Java"
+    framework: str | None = None
+    details: list[str] = [f"{language} detected"]
+
+    coords: list[tuple[str, str]] = list(_read_pom_coords(project_dir / "pom.xml"))
+    for filename in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"):
+        coords.extend(_read_gradle_coords(project_dir / filename))
+
+    artifacts = {artifact.lower() for _, artifact in coords}
+    pg_drivers = artifacts & JAVA_PG_ARTIFACTS
+    mysql_drivers = artifacts & JAVA_MYSQL_ARTIFACTS
+    engine_hint, driver = _sort_engine_hint(pg_drivers, mysql_drivers, details, "Java")
+
+    for marker, label in JAVA_FRAMEWORK_MARKERS:
+        if any(marker in artifact for artifact in artifacts):
+            framework = label
+            details.append(f"{label} detected")
+            break
+
+    return language, framework, driver, engine_hint, details
+
+
+def _read_csproj_packages(csproj: Path) -> set[str]:
+    """Return package names referenced by a .csproj file."""
+    import xml.etree.ElementTree as ET
+
+    def localname(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    packages: set[str] = set()
+    try:
+        root = ET.fromstring(csproj.read_text(encoding="utf-8"))
+        for element in root.iter():
+            if localname(element.tag) != "PackageReference":
+                continue
+            include = element.attrib.get("Include") or element.attrib.get("Update") or ""
+            if include:
+                packages.add(include.strip())
+    except (ET.ParseError, OSError):
+        pass
+    return packages
+
+
+def _shallow_glob(project_dir: Path, pattern: str) -> list[Path]:
+    """Match *pattern* at the root and up to two levels deep, skipping hidden dirs."""
+    matches = list(project_dir.glob(pattern))
+    for subdir in project_dir.iterdir():
+        if not (subdir.is_dir() and not subdir.name.startswith(".")):
+            continue
+        matches.extend(subdir.glob(pattern))
+        for nested in subdir.iterdir():
+            if nested.is_dir() and not nested.name.startswith("."):
+                matches.extend(nested.glob(pattern))
+    return matches
+
+
+def _detect_dotnet_project(
+    project_dir: Path,
+) -> tuple[str | None, str | None, str | None, str | None, list[str]]:
+    """Detect language/framework/driver from .NET (csproj/sln) files."""
+    language = ".NET"
+    framework: str | None = None
+    details: list[str] = [f"{language} detected"]
+
+    packages: set[str] = set()
+    web_sdk = False
+    for csproj in _shallow_glob(project_dir, "*.csproj"):
+        packages |= _read_csproj_packages(csproj)
+        try:
+            if 'Sdk="Microsoft.NET.Sdk.Web"' in csproj.read_text(
+                encoding="utf-8", errors="ignore"
+            ):
+                web_sdk = True
+        except OSError:
+            pass
+
+    lower = {package.lower() for package in packages}
+    pg_drivers = lower & DOTNET_PG_PACKAGES
+    mysql_drivers = lower & DOTNET_MYSQL_PACKAGES
+    engine_hint, driver = _sort_engine_hint(pg_drivers, mysql_drivers, details, ".NET")
+
+    if web_sdk or any("microsoft.aspnetcore" in package for package in lower):
+        framework = "ASP.NET Core"
+        details.append("ASP.NET Core detected")
+    if any("entityframeworkcore" in package for package in lower):
+        details.append("Entity Framework Core detected")
+
+    return language, framework, driver, engine_hint, details
+
+
 def detect_project(path: str = ".") -> ProjectInfo:
     """Inspect *path* and return detected project metadata."""
     project_dir = Path(path).resolve()
@@ -349,22 +503,39 @@ def detect_project(path: str = ".") -> ProjectInfo:
     has_package_json = (project_dir / "package.json").exists()
     has_composer = (project_dir / "composer.json").exists()
     has_gemfile = (project_dir / "Gemfile").exists()
+    has_java = (project_dir / "pom.xml").exists() or any(
+        (project_dir / name).exists()
+        for name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")
+    )
+    has_dotnet = any(_shallow_glob(project_dir, "*.csproj")) or any(
+        _shallow_glob(project_dir, "*.sln")
+    )
 
     if has_pyproject or has_requirements:
         language, framework, driver, engine_hint, py_details = _detect_python_project(project_dir)
         details.extend(py_details)
 
-    elif has_package_json:
-        language, framework, driver, engine_hint, node_details = _detect_node_project(project_dir)
-        details.extend(node_details)
+    elif has_java:
+        language, framework, driver, engine_hint, java_details = _detect_java_project(project_dir)
+        details.extend(java_details)
+
+    elif has_dotnet:
+        language, framework, driver, engine_hint, dotnet_details = _detect_dotnet_project(
+            project_dir
+        )
+        details.extend(dotnet_details)
+
+    elif has_gemfile:
+        language, framework, driver, engine_hint, ruby_details = _detect_ruby_project(project_dir)
+        details.extend(ruby_details)
 
     elif has_composer or (project_dir / "composer.lock").exists():
         language, framework, driver, engine_hint, php_details = _detect_php_project(project_dir)
         details.extend(php_details)
 
-    elif has_gemfile:
-        language, framework, driver, engine_hint, ruby_details = _detect_ruby_project(project_dir)
-        details.extend(ruby_details)
+    elif has_package_json:
+        language, framework, driver, engine_hint, node_details = _detect_node_project(project_dir)
+        details.extend(node_details)
 
     # Fall back to the engine implied by DATABASE_URL when no driver hints it.
     if engine_hint is None:
